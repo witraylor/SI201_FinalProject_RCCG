@@ -128,19 +128,61 @@ def insert_songs(conn, songs):
     conn.commit()
 
 
+# def fetch_and_store_spotify_tracks(conn):
+#     print("Fetching up to 25 new tracks...")
+
+#     # Fetch exactly 25 tracks each time
+#     tracks = get_spotify_data(query="year:2024", limit=25, offset=0)
+
+#     # Add genres from artist
+#     tracks = enrich_tracks_with_genres(tracks)
+
+#     # Store into DB
+#     insert_songs(conn, tracks)
+
+#     print("Inserted 25 tracks into the database.")
 def fetch_and_store_spotify_tracks(conn):
-    print("Fetching up to 25 new tracks...")
+    print("Fetching 25 valid tracks...")
 
-    # Fetch exactly 25 tracks each time
-    tracks = get_spotify_data(query="year:2024", limit=25, offset=0)
+    valid_tracks = []
+    offset = 0
 
-    # Add genres from artist
-    tracks = enrich_tracks_with_genres(tracks)
+    # keep fetching until we have 25 good tracks
+    while len(valid_tracks) < 25:
+        print(f"Requesting Spotify: offset={offset}")
 
-    # Store into DB
-    insert_songs(conn, tracks)
+        batch = get_spotify_data(query="year:2024", limit=25, offset=offset)
 
-    print("Inserted 25 tracks into the database.")
+        if not batch:
+            print("No more results from Spotify.")
+            break
+
+        # Filter out broken/missing entries
+        for t in batch:
+            if (
+                t.get("id") is not None and 
+                t.get("artist") is not None and
+                t.get("artist_id") is not None and
+                t.get("album") is not None
+            ):
+                valid_tracks.append(t)
+
+            # stop once we hit 25
+            if len(valid_tracks) == 25:
+                break
+
+        offset += 25  # get a new page of results next loop
+
+    print(f"Collected {len(valid_tracks)} valid tracks.")
+
+    # enrich with genres
+    valid_tracks = enrich_tracks_with_genres(valid_tracks)
+
+    # store into database
+    insert_songs(conn, valid_tracks)
+
+    print("Inserted 25 valid tracks into Songs + Genres tables.")
+
 
 
 

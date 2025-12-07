@@ -12,6 +12,7 @@ from datetime import datetime
 #spotipy ids
 CLIENT_ID = 'be1ea16df5c24ab195ff21e6c8a82cd1'
 CLIENT_SECRET = 'fe32b6a7ae92441bb57db162f56e75a3'
+DB_PATH = "/Users/clairefuller/Desktop/umich/Si201/SI201_FinalProject_RCCG/projects/fall25-finalproject/media_data.db"
 #create an authorized variable to use for future API calls
 sp = spotipy.Spotify(
     auth_manager=SpotifyClientCredentials(
@@ -82,3 +83,23 @@ def init_database(db_name="media_data.db"):
     conn.commit()
     return conn
 
+
+
+
+def my_spotipy_query():
+    tracks = []
+    for index in range(4):
+        local_tracks = get_spotify_data(query="year:2023", limit=25, offset=(index * 25))
+        tracks.extend(local_tracks)
+    print(len(tracks))
+    #print(tracks)
+        
+
+    for index in range(4):
+        local_tracks = get_spotify_data(query="year:2024", limit=25, offset=(index * 25))
+        tracks.extend(local_tracks)
+    print(len(tracks))
+
+
+if __name__ == '__main__':
+    init_database(db_name= DB_PATH)

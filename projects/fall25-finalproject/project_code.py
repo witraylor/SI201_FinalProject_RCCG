@@ -21,7 +21,7 @@ sp = spotipy.Spotify(
     )
 )
 
-def get_spotify_data(query="year:2023", limit=25, offset=0):
+def get_spotify_data(query="year:2024", limit=25, offset=0):
     # Search for tracks matching query
     results = sp.search(q=query, type="track", limit=limit, offset=offset)
     tracks = []
@@ -38,6 +38,7 @@ def get_spotify_data(query="year:2023", limit=25, offset=0):
         tracks.append(track)
     return tracks
 
+#initialize ALL table sets
 def init_database(db_name="media_data.db"):
     conn = sqlite3.connect(db_name)
     cur = conn.cursor()
@@ -63,8 +64,7 @@ def init_database(db_name="media_data.db"):
             artist TEXT,
             album TEXT,
             popularity INTEGER,
-            release_date TEXT,
-            genre TEXT
+            release_date TEXT
 
         )
     """)
@@ -79,14 +79,15 @@ def init_database(db_name="media_data.db"):
             weight INTEGER
         );
     """)
-    
+    #genres for songs
     cur.execute("""
-        CREATE TABLE IF NOT EXISTS Artists (
-            id TEXT PRIMARY KEY,
-            name TEXT,
-            genres TEXT
+        CREATE TABLE IF NOT EXISTS Genres (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            song_id TEXT,
+            genre TEXT,
+            FOREIGN KEY(song_id) REFERENCES Songs(id)
         );
-     """)
+    """)
 
     conn.commit()
     return conn
@@ -104,60 +105,83 @@ def enrich_tracks_with_genres(tracks): #find genre for spotipy through artist id
 
 def insert_songs(conn, songs):
     cur = conn.cursor()
-
     for s in songs:
         cur.execute("""
-            INSERT OR IGNORE INTO Songs 
-            (id, title, artist, album, popularity, release_date, genre)
-            VALUES (?, ?, ?, ?, ?, ?, ?);
+            INSERT OR IGNORE INTO Songs (id, title, artist, album, popularity, release_date)
+            VALUES (?, ?, ?, ?, ?, ?);
         """, (
             s.get('id'),
             s.get('name'),
             s.get('artist'),
             s.get('album'),
             s.get('popularity'),
-            s.get('release_date'),
-            ", ".join(s.get('genres', [])) if s.get('genres') else None
+            s.get('release_date')
         ))
+
+        genres = s.get('genres', []) #insert genres seperately
+        for g in genres:
+            cur.execute("""
+                INSERT OR IGNORE INTO Genres (song_id, genre)
+                VALUES (?, ?)
+            """, (s.get('id'), g))
 
     conn.commit()
 
+
 def fetch_and_store_spotify_tracks(conn):
-    all_tracks = []
+    print("Fetching up to 25 new tracks...")
 
-    #2023 tracks
-    for index in range(4):
-        batch = get_spotify_data(query="year:2023", limit=25, offset=index * 25)
-        all_tracks.extend(batch)
+    # Fetch exactly 25 tracks each time
+    tracks = get_spotify_data(query="year:2024", limit=25, offset=0)
 
-    #2024 tracks
-    for index in range(4):
-        batch = get_spotify_data(query="year:2024", limit=25, offset=index * 25)
-        all_tracks.extend(batch)
+    # Add genres from artist
+    tracks = enrich_tracks_with_genres(tracks)
 
-    print(f"Fetched {len(all_tracks)} raw tracks.")
+    # Store into DB
+    insert_songs(conn, tracks)
 
-    #add genres
-    all_tracks = enrich_tracks_with_genres(all_tracks)
-    print("Added genre metadata from artists.")
-
-    insert_songs(conn, all_tracks)
-    print("Tracks inserted into SQLite.")
+    print("Inserted 25 tracks into the database.")
 
 
-def my_spotipy_query(): # for debug
-    tracks = []
-    for index in range(4):
-        local_tracks = get_spotify_data(query="year:2023", limit=25, offset=(index * 25))
-        tracks.extend(local_tracks)
-    print(len(tracks))
-    #print(tracks)
+
+# def my_spotipy_query(): # for debug
+#     tracks = []
+#     for index in range(4):
+#         local_tracks = get_spotify_data(query="year:2023", limit=25, offset=(index * 25))
+#         tracks.extend(local_tracks)
+#     print(len(tracks))
+#     #print(tracks)
         
 
-    for index in range(4):
-        local_tracks = get_spotify_data(query="year:2024", limit=25, offset=(index * 25))
-        tracks.extend(local_tracks)
-    print(len(tracks))
+#     for index in range(4):
+#         local_tracks = get_spotify_data(query="year:2024", limit=25, offset=(index * 25))
+#         tracks.extend(local_tracks)
+#     print(len(tracks))
+
+def my_spotipy_query(sp, query):
+    results = sp.search(q=query, type='track', limit=25)
+    tracks = results['tracks']['items']
+
+    songs = []
+
+    for t in tracks:
+        song_data = {
+            'id': t['id'],
+            'name': t['name'],
+            'artist': t['artists'][0]['name'],
+            'album': t['album']['name'],
+            'popularity': t['popularity'],
+            'release_date': t['album']['release_date'],
+            'genres': []
+        }
+        artist_id = t['artists'][0]['id']
+        artist_info = sp.artist(artist_id)
+        song_data['genres'] = artist_info.get('genres', [])
+
+        songs.append(song_data)
+
+    return songs
+
 
 
 if __name__ == '__main__':

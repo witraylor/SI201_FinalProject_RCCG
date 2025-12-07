@@ -22,8 +22,10 @@ sp = spotipy.Spotify(
 )
 
 def get_spotify_data(query="year:2024", limit=25, offset=0):
+    print(f"call to get sptoify data: query = {query} limit = {limit} offset = {offset}")
     # Search for tracks matching query
     results = sp.search(q=query, type="track", limit=limit, offset=offset)
+    print(f"spotifyapi returned {len(results.get('tracks', {}).get('items', []))}")
     tracks = []
     for item in results.get('tracks', {}).get('items', []):
         track = {
@@ -128,105 +130,58 @@ def insert_songs(conn, songs):
     conn.commit()
 
 
-# def fetch_and_store_spotify_tracks(conn):
-#     print("Fetching up to 25 new tracks...")
-
-#     # Fetch exactly 25 tracks each time
-#     tracks = get_spotify_data(query="year:2024", limit=25, offset=0)
-
-#     # Add genres from artist
-#     tracks = enrich_tracks_with_genres(tracks)
-
-#     # Store into DB
-#     insert_songs(conn, tracks)
-
-#     print("Inserted 25 tracks into the database.")
 def fetch_and_store_spotify_tracks(conn):
-    print("Fetching 25 valid tracks...")
+    cur = conn.cursor()
 
-    valid_tracks = []
-    offset = 0
+    # Count how many songs already exist
+    cur.execute("SELECT COUNT(*) FROM Songs")
+    current_count = cur.fetchone()[0]
 
-    # keep fetching until we have 25 good tracks
-    while len(valid_tracks) < 25:
-        print(f"Requesting Spotify: offset={offset}")
+    offset = current_count
 
-        batch = get_spotify_data(query="year:2024", limit=25, offset=offset)
+    # DO NOT fetch beyond 100
+    if current_count >= 100:
+        print("You already have 100 songs. No more data fetched.")
+        return
 
-        if not batch:
-            print("No more results from Spotify.")
-            break
+    print(f"Currently stored: {current_count} songs.")
+    print(f"Fetching tracks using offset = {offset}...")
 
-        # Filter out broken/missing entries
-        for t in batch:
-            if (
-                t.get("id") is not None and 
-                t.get("artist") is not None and
-                t.get("artist_id") is not None and
-                t.get("album") is not None
-            ):
-                valid_tracks.append(t)
+    # Fetch 25 tracks
+    if current_count < 50:
+        query = "year:2023"
+    else:
+        query = "year:2024"
+    tracks = get_spotify_data(query=query, limit=25, offset=offset)
+    print(f"Retrieved {len(tracks)} tracks")
 
-            # stop once we hit 25
-            if len(valid_tracks) == 25:
-                break
+    # Add genres
+    tracks = enrich_tracks_with_genres(tracks)
 
-        offset += 25  # get a new page of results next loop
-
-    print(f"Collected {len(valid_tracks)} valid tracks.")
-
-    # enrich with genres
-    valid_tracks = enrich_tracks_with_genres(valid_tracks)
-
-    # store into database
-    insert_songs(conn, valid_tracks)
-
-    print("Inserted 25 valid tracks into Songs + Genres tables.")
+    # Insert into DB
+    insert_songs(conn, tracks)
 
 
 
 
-# def my_spotipy_query(): # for debug
-#     tracks = []
-#     for index in range(4):
-#         local_tracks = get_spotify_data(query="year:2023", limit=25, offset=(index * 25))
-#         tracks.extend(local_tracks)
-#     print(len(tracks))
-#     #print(tracks)
+def my_spotipy_query(): # for debug
+    tracks = []
+    for index in range(4):
+        local_tracks = get_spotify_data(query="year:2023", limit=25, offset=(index * 25))
+        tracks.extend(local_tracks)
+    print(len(tracks))
+    #print(tracks)
         
 
-#     for index in range(4):
-#         local_tracks = get_spotify_data(query="year:2024", limit=25, offset=(index * 25))
-#         tracks.extend(local_tracks)
-#     print(len(tracks))
-
-def my_spotipy_query(sp, query):
-    results = sp.search(q=query, type='track', limit=25)
-    tracks = results['tracks']['items']
-
-    songs = []
-
-    for t in tracks:
-        song_data = {
-            'id': t['id'],
-            'name': t['name'],
-            'artist': t['artists'][0]['name'],
-            'album': t['album']['name'],
-            'popularity': t['popularity'],
-            'release_date': t['album']['release_date'],
-            'genres': []
-        }
-        artist_id = t['artists'][0]['id']
-        artist_info = sp.artist(artist_id)
-        song_data['genres'] = artist_info.get('genres', [])
-
-        songs.append(song_data)
-
-    return songs
+    for index in range(4):
+        local_tracks = get_spotify_data(query="year:2024", limit=25, offset=(index * 25))
+        tracks.extend(local_tracks)
+    print(len(tracks))
 
 
 
 if __name__ == '__main__':
+    my_spotipy_query()
     conn = init_database(db_name= DB_PATH)
     fetch_and_store_spotify_tracks(conn)
 

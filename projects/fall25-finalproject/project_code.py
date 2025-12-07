@@ -39,7 +39,6 @@ def get_spotify_data(query="year:2023", limit=25, offset=0):
     return tracks
 
 def init_database(db_name="media_data.db"):
-
     conn = sqlite3.connect(db_name)
     cur = conn.cursor()
     # Enable foreign key constraints (in case we use them)
@@ -80,13 +79,73 @@ def init_database(db_name="media_data.db"):
             weight INTEGER
         );
     """)
+    
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS Artists (
+            id TEXT PRIMARY KEY,
+            name TEXT,
+            genres TEXT
+        );
+     """)
+
     conn.commit()
     return conn
 
+def enrich_tracks_with_genres(tracks): #find genre for spotipy through artist id
+    for t in tracks:
+        artist_id = t.get("artist_id")
+        if artist_id:
+            artist_data = sp.artist(artist_id)
+            genres = artist_data.get("genres", [])
+            t["genres"] = genres
+        else:
+            t["genres"] = []
+    return tracks
+
+def insert_songs(conn, songs):
+    cur = conn.cursor()
+
+    for s in songs:
+        cur.execute("""
+            INSERT OR IGNORE INTO Songs 
+            (id, title, artist, album, popularity, release_date, genre)
+            VALUES (?, ?, ?, ?, ?, ?, ?);
+        """, (
+            s.get('id'),
+            s.get('name'),
+            s.get('artist'),
+            s.get('album'),
+            s.get('popularity'),
+            s.get('release_date'),
+            ", ".join(s.get('genres', [])) if s.get('genres') else None
+        ))
+
+    conn.commit()
+
+def fetch_and_store_spotify_tracks(conn):
+    all_tracks = []
+
+    #2023 tracks
+    for index in range(4):
+        batch = get_spotify_data(query="year:2023", limit=25, offset=index * 25)
+        all_tracks.extend(batch)
+
+    #2024 tracks
+    for index in range(4):
+        batch = get_spotify_data(query="year:2024", limit=25, offset=index * 25)
+        all_tracks.extend(batch)
+
+    print(f"Fetched {len(all_tracks)} raw tracks.")
+
+    #add genres
+    all_tracks = enrich_tracks_with_genres(all_tracks)
+    print("Added genre metadata from artists.")
+
+    insert_songs(conn, all_tracks)
+    print("Tracks inserted into SQLite.")
 
 
-
-def my_spotipy_query():
+def my_spotipy_query(): # for debug
     tracks = []
     for index in range(4):
         local_tracks = get_spotify_data(query="year:2023", limit=25, offset=(index * 25))
@@ -102,4 +161,8 @@ def my_spotipy_query():
 
 
 if __name__ == '__main__':
-    init_database(db_name= DB_PATH)
+    conn = init_database(db_name= DB_PATH)
+    fetch_and_store_spotify_tracks(conn)
+
+
+# get data from spotify, loop over track. for each track add it SQlite using api. 

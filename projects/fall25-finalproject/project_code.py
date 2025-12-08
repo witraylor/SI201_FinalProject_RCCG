@@ -9,7 +9,7 @@ from typing import List, Dict, Any, Optional
 from datetime import datetime
 
 
-#spotipy ids
+#--------------------call spotipy api-------------------------
 CLIENT_ID = 'be1ea16df5c24ab195ff21e6c8a82cd1'
 CLIENT_SECRET = 'fe32b6a7ae92441bb57db162f56e75a3'
 DB_PATH = "/Users/clairefuller/Desktop/umich/Si201/SI201_FinalProject_RCCG/projects/fall25-finalproject/media_data.db"
@@ -21,7 +21,7 @@ sp = spotipy.Spotify(
     )
 )
 
-def get_spotify_data(query="year:2024", limit=25, offset=0):
+def get_spotify_data(query="year:2020-2025", limit=25, offset=0):
     print(f"call to get sptoify data: query = {query} limit = {limit} offset = {offset}")
     # Search for tracks matching query
     results = sp.search(q=query, type="track", limit=limit, offset=offset)
@@ -40,7 +40,18 @@ def get_spotify_data(query="year:2024", limit=25, offset=0):
         tracks.append(track)
     return tracks
 
-#initialize ALL table sets
+def enrich_tracks_with_genres(tracks): #find genre for spotipy through artist id
+    for t in tracks:
+        artist_id = t.get("artist_id")
+        if artist_id:
+            artist_data = sp.artist(artist_id)
+            genres = artist_data.get("genres", [])
+            t["genres"] = genres
+        else:
+            t["genres"] = []
+    return tracks
+
+#--------------------------initialize ALL table sets-------------------------
 def init_database(db_name="media_data.db"):
     conn = sqlite3.connect(db_name)
     cur = conn.cursor()
@@ -94,17 +105,8 @@ def init_database(db_name="media_data.db"):
     conn.commit()
     return conn
 
-def enrich_tracks_with_genres(tracks): #find genre for spotipy through artist id
-    for t in tracks:
-        artist_id = t.get("artist_id")
-        if artist_id:
-            artist_data = sp.artist(artist_id)
-            genres = artist_data.get("genres", [])
-            t["genres"] = genres
-        else:
-            t["genres"] = []
-    return tracks
 
+#--------------insert songs into database----------------
 def insert_songs(conn, songs):
     cur = conn.cursor()
     for s in songs:
@@ -129,7 +131,7 @@ def insert_songs(conn, songs):
 
     conn.commit()
 
-
+#-----------spotipy fetching helpers------------------
 def fetch_and_store_spotify_tracks(conn):
     cur = conn.cursor()
 
@@ -137,7 +139,7 @@ def fetch_and_store_spotify_tracks(conn):
     cur.execute("SELECT COUNT(*) FROM Songs")
     current_count = cur.fetchone()[0]
 
-    offset = current_count
+    offset = (current_count // 25) * 25 #changed
 
     # DO NOT fetch beyond 100
     if current_count >= 100:
@@ -148,10 +150,7 @@ def fetch_and_store_spotify_tracks(conn):
     print(f"Fetching tracks using offset = {offset}...")
 
     # Fetch 25 tracks
-    if current_count < 50:
-        query = "year:2023"
-    else:
-        query = "year:2024"
+    query = "year:2020-2025"
     tracks = get_spotify_data(query=query, limit=25, offset=offset)
     print(f"Retrieved {len(tracks)} tracks")
 
@@ -160,8 +159,6 @@ def fetch_and_store_spotify_tracks(conn):
 
     # Insert into DB
     insert_songs(conn, tracks)
-
-
 
 
 def my_spotipy_query(): # for debug
@@ -178,12 +175,55 @@ def my_spotipy_query(): # for debug
         tracks.extend(local_tracks)
     print(len(tracks))
 
+#_----------------calculations-----------------
+def calculate_spotify_genre_popularity(conn, output_file="spotify_genre_popularity.txt"):
+    cur = conn.cursor()
+    query = """
+        SELECT g.genre, AVG(s.popularity) AS avg_popularity
+        FROM Genres g
+        JOIN Songs s ON g.song_id = s.id
+        GROUP BY g.genre
+        ORDER BY avg_popularity DESC;
+    """
+
+    rows = cur.execute(query).fetchall()
+
+    #results to a text file
+    with open(output_file, "w") as f:
+        for genre, avg_pop in rows:
+            f.write(f"{genre}: {avg_pop:.2f}\n")
+
+    print(f"Written genre popularity data to {output_file}")
+
+    return [{"genre": genre, "avg_popularity": avg_pop} for genre, avg_pop in rows]
+
+#--------------------visualization----------------
+def visualize_genre_popularity(data):
+    genres = [item["genre"] for item in data]
+    avg_popularity = [item["avg_popularity"] for item in data]
+
+    plt.figure(figsize=(12, 7))
+    colors = ["skyblue", "magenta", "lightgreen", "violet", "pink", "turquoise"]
+    plt.barh(genres, avg_popularity, color=colors[:len(genres)])
+    print("hello")
+
+    plt.xlabel("Average Popularity")
+    plt.ylabel("Genre")
+    plt.title("Average Spotify Popularity by Genre")
+
+
+    plt.tight_layout()
+
+    plt.show()
 
 
 if __name__ == '__main__':
-    my_spotipy_query()
+    #my_spotipy_query()
     conn = init_database(db_name= DB_PATH)
     fetch_and_store_spotify_tracks(conn)
+    calculate_spotify_genre_popularity(conn)
+
+    genre_data = calculate_spotify_genre_popularity(conn)
+    visualize_genre_popularity(genre_data)
 
 
-# get data from spotify, loop over track. for each track add it SQlite using api. 

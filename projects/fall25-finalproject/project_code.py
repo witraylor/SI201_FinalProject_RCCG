@@ -8,6 +8,7 @@ import sqlite3
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 import requests
+from collections import Counter
 
 #--------------------call spotipy api-------------------------
 CLIENT_ID = 'be1ea16df5c24ab195ff21e6c8a82cd1'
@@ -252,22 +253,202 @@ def insert_shows(conn, shows):
 
 
 
+# =============== TMDB / MOVIES (Anna) =====================
+
+TMDB_API_KEY = "YOUR_TMDB_API_KEY_HERE"  # <-- PUT YOUR KEY HERE
+TMDB_BASE_URL = "https://api.themoviedb.org/3/discover/movie"
+
+# From your earlier code – we're reusing as mapping
+genre_mapping = {
+    10759: "Action & Adventure",
+    16: "Animation",
+    35: "Comedy",
+    80: "Crime",
+    99: "Documentary",
+    18: "Drama",
+    10751: "Family",
+    10762: "Kids",
+    9648: "Mystery",
+    10763: "News",
+    10764: "Reality",
+    10765: "Sci-Fi & Fantasy",
+    10766: "Soap",
+    10767: "Talk",
+    10768: "War & Politics",
+    37: "Western",
+    -1: "Brainsuck"
+}
+
+def get_genre_names(genre_ids):
+    genres = []
+    for g in genre_ids:
+        if g in genre_mapping:
+            genres.append(genre_mapping[g])
+        else:
+            genres.append("Unknown")
+    return genres
+
+def get_tmdb_data(api_key: str, page_number: int = 1):
+    """
+    Fetch one page (20 results) of popular movies.
+    """
+    params = {
+        "api_key": api_key,
+        "sort_by": "popularity.desc",
+        "page": page_number,
+        "language": "en-US"
+    }
+    response = requests.get(TMDB_BASE_URL, params=params)
+    response.raise_for_status()
+    data = response.json()
+
+    movies = []
+    for item in data.get("results", []):
+        movie = {
+            "id": item.get("id"),
+            "title": item.get("title"),
+            "release_date": item.get("release_date"),
+            "popularity": item.get("popularity"),
+            "revenue": 0,  # this endpoint doesn't give revenue
+            "avg_rating": item.get("vote_average"),
+            "genre_ids": json.dumps(item.get("genre_ids", []))
+        }
+        movies.append(movie)
+
+    return movies
+
+def store_movies_in_db(movie_list, conn):
+    cur = conn.cursor()
+    for m in movie_list:
+        cur.execute(
+            """
+            INSERT OR IGNORE INTO Movies
+            (id, title, release_date, popularity, revenue, avg_rating, genre_ids)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                m.get("id"),
+                m.get("title"),
+                m.get("release_date"),
+                m.get("popularity"),
+                m.get("revenue"),
+                m.get("avg_rating"),
+                m.get("genre_ids"),
+            )
+        )
+    conn.commit()
+
+def fetch_and_store_tmdb_movies(conn, api_key: str = TMDB_API_KEY):
+    """
+    Fetch 20 movies at a time until we have at least 100 movies.
+    """
+    cur = conn.cursor()
+    cur.execute("SELECT COUNT(*) FROM Movies")
+    current = cur.fetchone()[0]
+
+    if current >= 100:
+        print("Already have at least 100 movies. No more TMDB fetch.")
+        return
+
+    next_page = (current // 20) + 1
+    print(f"Currently have {current} movies. Fetching TMDB page {next_page}...")
+    movies = get_tmdb_data(api_key, page_number=next_page)
+    print(f"Retrieved {len(movies)} movies from TMDB.")
+    store_movies_in_db(movies, conn)
+
+def calculate_tmdb_genre_counts(conn, output_file="tmdb_genre_counts.txt"):
+    """
+    Read Movies.genre_ids, convert to names, count occurrences.
+    """
+    cur = conn.cursor()
+    cur.execute("SELECT genre_ids FROM Movies")
+    rows = cur.fetchall()
+
+    counts = Counter()
+
+    for (genre_ids_str,) in rows:
+        if not genre_ids_str:
+            continue
+        try:
+            id_list = json.loads(genre_ids_str)
+        except json.JSONDecodeError:
+            id_list = []
+        names = get_genre_names(id_list)
+        for g in names:
+            counts[g] += 1
+
+    sorted_genres = sorted(counts.items(), key=lambda x: x[1], reverse=True)
+
+    with open(output_file, "w") as f:
+        for genre, count in sorted_genres:
+            f.write(f"{genre}: {count}\n")
+
+    print(f"Wrote TMDB genre counts to {output_file}")
+
+    return [{"genre": g, "count": c} for g, c in sorted_genres]
+
+def visualize_tmdb_genres(genre_data, top_n=10):
+    top = genre_data[:top_n]
+    labels = [item["genre"] for item in top]
+    counts = [item["count"] for item in top]
+
+    plt.figure(figsize=(10, 6))
+    plt.barh(labels, counts)
+    plt.xlabel("Number of Movies")
+    plt.ylabel("Genre")
+    plt.title(f"Top {top_n} TMDB Movie Genres")
+    plt.tight_layout()
+    plt.show()
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 if __name__ == '__main__':
+    # use the DB_PATH constant from the top of the file
+    conn = init_database(db_name=DB_PATH)
+
+    # ----- Spotify -----
+    fetch_and_store_spotify_tracks(conn)
+    spotify_genre_data = calculate_spotify_genre_popularity(conn)
+    visualize_genre_popularity(spotify_genre_data)
+
+    # ----- TVMaze -----
+    shows = get_tvmaze_data(page=0)
+    insert_shows(conn, shows)
+    print(f"Inserted {len(shows)} TV shows into the Shows table.")
+
+    # ----- TMDB (Movies) -----
+    fetch_and_store_tmdb_movies(conn)
+    tmdb_genre_data = calculate_tmdb_genre_counts(conn)
+    visualize_tmdb_genres(tmdb_genre_data)
+
+    conn.close()
+
+
+###old main func
+#if __name__ == '__main__':
     #my_spotipy_query()
     # conn = init_database(db_name= DB_PATH)
     # fetch_and_store_spotify_tracks(conn)
     # calculate_spotify_genre_popularity(conn)
-    DB_PATH = "media_data.db"
-    conn = init_database(db_name=DB_PATH)
-    fetch_and_store_spotify_tracks(conn)
-    calculate_spotify_genre_popularity(conn)
+    #DB_PATH = "media_data.db"
+    #conn = init_database(db_name=DB_PATH)
+    #fetch_and_store_spotify_tracks(conn)
+    #calculate_spotify_genre_popularity(conn)
 
     # genre_data = calculate_spotify_genre_popularity(conn)
     # visualize_genre_popularity(genre_data)
     #TVMAZE api
-    print(get_tvmaze_data(page=0))
-
-
+    #print(get_tvmaze_data(page=0))
 

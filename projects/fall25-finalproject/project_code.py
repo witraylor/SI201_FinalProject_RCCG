@@ -258,7 +258,7 @@ def insert_shows(conn, shows):
 
 # =============== TMDB / MOVIES (Anna) =====================
 
-TMDB_API_KEY = "YOUR_TMDB_API_KEY_HERE"  # <-- PUT YOUR KEY HERE
+TMDB_API_KEY = "6b8a91e2db2dc97ffc2363b4dc8e6298"  # <-- PUT YOUR KEY HERE
 TMDB_BASE_URL = "https://api.themoviedb.org/3/discover/movie"
 
 # From your earlier code – we're reusing as mapping

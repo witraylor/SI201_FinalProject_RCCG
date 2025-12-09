@@ -10,10 +10,13 @@ from datetime import datetime
 import requests
 from collections import Counter
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_PATH = os.path.join(BASE_DIR, "media_data.db")
+
 #--------------------call spotipy api-------------------------
 CLIENT_ID = 'be1ea16df5c24ab195ff21e6c8a82cd1'
 CLIENT_SECRET = 'fe32b6a7ae92441bb57db162f56e75a3'
-DB_PATH = "/Users/clairefuller/Desktop/umich/Si201/SI201_FinalProject_RCCG/projects/fall25-finalproject/media_data.db"
+# DB_PATH = "/Users/clairefuller/Desktop/umich/Si201/SI201_FinalProject_RCCG/projects/fall25-finalproject/media_data.db"
 #create an authorized variable to use for future API calls
 sp = spotipy.Spotify(
     auth_manager=SpotifyClientCredentials(
@@ -53,7 +56,7 @@ def enrich_tracks_with_genres(tracks): #find genre for spotipy through artist id
     return tracks
 
 #--------------------------initialize ALL table sets-------------------------
-def init_database(db_name="media_data.db"):
+def init_database(db_name):
     conn = sqlite3.connect(db_name)
     cur = conn.cursor()
     # Enable foreign key constraints (in case we use them)
@@ -416,7 +419,7 @@ def visualize_tmdb_genres(genre_data, top_n=10):
 
 if __name__ == '__main__':
     # use the DB_PATH constant from the top of the file
-    conn = init_database(db_name=DB_PATH)
+    conn = init_database(DB_PATH)
 
     # ----- Spotify -----
     fetch_and_store_spotify_tracks(conn)

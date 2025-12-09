@@ -21,7 +21,7 @@ sp = spotipy.Spotify(
     )
 )
 
-def get_spotify_data(query="year:2020-2025", limit=25, offset=0):
+def get_spotify_data(query="track:a", limit=25, offset=0):
     print(f"call to get sptoify data: query = {query} limit = {limit} offset = {offset}")
     # Search for tracks matching query
     results = sp.search(q=query, type="track", limit=limit, offset=offset)
@@ -135,29 +135,24 @@ def insert_songs(conn, songs):
 def fetch_and_store_spotify_tracks(conn):
     cur = conn.cursor()
 
-    # Count how many songs already exist
     cur.execute("SELECT COUNT(*) FROM Songs")
-    current_count = cur.fetchone()[0]
+    current = cur.fetchone()[0]
 
-    offset = (current_count // 25) * 25 #changed
-
-    # DO NOT fetch beyond 100
-    if current_count >= 100:
-        print("You already have 100 songs. No more data fetched.")
+    if current >= 100:
+        print("Reached 100 songs. Stopping.")
         return
 
-    print(f"Currently stored: {current_count} songs.")
-    print(f"Fetching tracks using offset = {offset}...")
+    offset = current
+    print("Fetching offset =", offset)
 
-    # Fetch 25 tracks
-    query = "year:2020-2025"
-    tracks = get_spotify_data(query=query, limit=25, offset=offset)
-    print(f"Retrieved {len(tracks)} tracks")
+    # Use a stable huge-query search
+    tracks = get_spotify_data(query='e', limit=25, offset=offset)
 
-    # Add genres
+    if len(tracks) == 0:
+        print("NO TRACKS RETURNED — Query too restrictive.")
+        return
+
     tracks = enrich_tracks_with_genres(tracks)
-
-    # Insert into DB
     insert_songs(conn, tracks)
 
 
@@ -205,7 +200,6 @@ def visualize_genre_popularity(data):
     plt.figure(figsize=(12, 7))
     colors = ["skyblue", "magenta", "lightgreen", "violet", "pink", "turquoise"]
     plt.barh(genres, avg_popularity, color=colors[:len(genres)])
-    print("hello")
 
     plt.xlabel("Average Popularity")
     plt.ylabel("Genre")
@@ -242,17 +236,17 @@ def get_tvmaze_data(page=0):
 def insert_shows(conn, shows):
     cur = conn.cursor()
     for tv in shows:
-    cur.execute("""
-    INSERT OR IGNORE INTO Shows (id, name, premiere_date, avg_rating, genres, weight)
-    VALUES (?, ?, ?, ?, ?, ?);
-    """, (
-    tv.get('id'),
-    tv.get('name'),
-    tv.get('premiere_date'),
-    tv.get('rating'),
-    ", ".join(tv.get('genres', [])) if tv.get('genres') else None,
-    tv.get('weight')
-    ))
+        cur.execute("""
+        INSERT OR IGNORE INTO Shows (id, name, premiere_date, avg_rating, genres, weight)
+        VALUES (?, ?, ?, ?, ?, ?);
+        """, (
+        tv.get('id'),
+        tv.get('name'),
+        tv.get('premiere_date'),
+        tv.get('rating'),
+        ", ".join(tv.get('genres', [])) if tv.get('genres') else None,
+        tv.get('weight')
+        ))
     conn.commit()
 
 
@@ -265,6 +259,10 @@ if __name__ == '__main__':
     # conn = init_database(db_name= DB_PATH)
     # fetch_and_store_spotify_tracks(conn)
     # calculate_spotify_genre_popularity(conn)
+    DB_PATH = "media_data.db"
+    conn = init_database(db_name=DB_PATH)
+    fetch_and_store_spotify_tracks(conn)
+    calculate_spotify_genre_popularity(conn)
 
     # genre_data = calculate_spotify_genre_popularity(conn)
     # visualize_genre_popularity(genre_data)

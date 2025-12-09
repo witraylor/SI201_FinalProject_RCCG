@@ -7,7 +7,7 @@ import os
 import sqlite3
 from typing import List, Dict, Any, Optional
 from datetime import datetime
-
+import requests
 
 #--------------------call spotipy api-------------------------
 CLIENT_ID = 'be1ea16df5c24ab195ff21e6c8a82cd1'
@@ -216,14 +216,60 @@ def visualize_genre_popularity(data):
 
     plt.show()
 
+#Retrieve TV show data from TVMAZE API, add to the database, and visualize data
+#1: Fetch shows
+def get_tvmaze_data(page=0):
+    url = f"https://api.tvmaze.com/shows?page={page}"
+    response = requests.get(url)
+    # If the page is out of range, TVMaze returns 404. Handle that:
+    if response.status_code != 200:
+        return []  # no data (page might not exist)
+    shows_data = response.json()
+    shows = []
+    for item in shows_data:
+        show = {
+        "id": item.get("id"),
+        "name": item.get("name"),
+        "premiere_date": item.get("premiered"),
+        "rating": item.get("rating", {}).get("average"),
+        "genres": item.get("genres", []),
+        "weight": item.get("weight")
+        }
+        shows.append(show)
+    return shows
+
+#Connect to DB and add show data
+def insert_shows(conn, shows):
+    cur = conn.cursor()
+    for tv in shows:
+    cur.execute("""
+    INSERT OR IGNORE INTO Shows (id, name, premiere_date, avg_rating, genres, weight)
+    VALUES (?, ?, ?, ?, ?, ?);
+    """, (
+    tv.get('id'),
+    tv.get('name'),
+    tv.get('premiere_date'),
+    tv.get('rating'),
+    ", ".join(tv.get('genres', [])) if tv.get('genres') else None,
+    tv.get('weight')
+    ))
+    conn.commit()
+
+
+
+
+
 
 if __name__ == '__main__':
     #my_spotipy_query()
-    conn = init_database(db_name= DB_PATH)
-    fetch_and_store_spotify_tracks(conn)
-    calculate_spotify_genre_popularity(conn)
+    # conn = init_database(db_name= DB_PATH)
+    # fetch_and_store_spotify_tracks(conn)
+    # calculate_spotify_genre_popularity(conn)
 
-    genre_data = calculate_spotify_genre_popularity(conn)
-    visualize_genre_popularity(genre_data)
+    # genre_data = calculate_spotify_genre_popularity(conn)
+    # visualize_genre_popularity(genre_data)
+    #TVMAZE api
+    print(get_tvmaze_data(page=0))
+
 
 

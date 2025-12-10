@@ -13,7 +13,8 @@ from collections import Counter
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, "media_data.db")
 
-#--------------------call spotipy api-------------------------
+#--------------------SPOTIPY API (Claire Fuller)-------------------------
+#----------Calling the API----------
 CLIENT_ID = 'be1ea16df5c24ab195ff21e6c8a82cd1'
 CLIENT_SECRET = 'fe32b6a7ae92441bb57db162f56e75a3'
 # DB_PATH = "/Users/clairefuller/Desktop/umich/Si201/SI201_FinalProject_RCCG/projects/fall25-finalproject/media_data.db"
@@ -25,6 +26,7 @@ sp = spotipy.Spotify(
     )
 )
 
+#----------Getting Data----------
 def get_spotify_data(query="track:a", limit=25, offset=0):
     print(f"call to get sptoify data: query = {query} limit = {limit} offset = {offset}")
     # Search for tracks matching query
@@ -44,6 +46,7 @@ def get_spotify_data(query="track:a", limit=25, offset=0):
         tracks.append(track)
     return tracks
 
+#----------Find Genres----------
 def enrich_tracks_with_genres(tracks): #find genre for spotipy through artist id
     for t in tracks:
         artist_id = t.get("artist_id")
@@ -55,7 +58,7 @@ def enrich_tracks_with_genres(tracks): #find genre for spotipy through artist id
             t["genres"] = []
     return tracks
 
-#--------------------------initialize ALL table sets-------------------------
+#----------Initialize ALL Table Sets----------
 def init_database(db_name):
     conn = sqlite3.connect(db_name)
     cur = conn.cursor()
@@ -109,8 +112,7 @@ def init_database(db_name):
     conn.commit()
     return conn
 
-
-#--------------insert songs into database----------------
+#----------Insert Songs Into Database----------
 def insert_songs(conn, songs):
     cur = conn.cursor()
     for s in songs:
@@ -135,7 +137,7 @@ def insert_songs(conn, songs):
 
     conn.commit()
 
-#-----------spotipy fetching helpers------------------
+#----------Spotipy Fetching Helpers----------
 def fetch_and_store_spotify_tracks(conn):
     cur = conn.cursor()
 
@@ -159,7 +161,6 @@ def fetch_and_store_spotify_tracks(conn):
     tracks = enrich_tracks_with_genres(tracks)
     insert_songs(conn, tracks)
 
-
 def my_spotipy_query(): # for debug
     tracks = []
     for index in range(4):
@@ -168,13 +169,12 @@ def my_spotipy_query(): # for debug
     print(len(tracks))
     #print(tracks)
         
-
     for index in range(4):
         local_tracks = get_spotify_data(query="year:2024", limit=25, offset=(index * 25))
         tracks.extend(local_tracks)
     print(len(tracks))
 
-#_----------------calculations-----------------
+#----------Calculations----------
 def calculate_spotify_genre_popularity(conn, output_file="spotify_genre_popularity.txt"):
     cur = conn.cursor()
     query = """
@@ -196,7 +196,7 @@ def calculate_spotify_genre_popularity(conn, output_file="spotify_genre_populari
 
     return [{"genre": genre, "avg_popularity": avg_pop} for genre, avg_pop in rows]
 
-#--------------------visualization----------------
+#-----------Visualization----------
 def visualize_genre_popularity(data):
     genres = [item["genre"] for item in data]
     avg_popularity = [item["avg_popularity"] for item in data]
@@ -214,8 +214,12 @@ def visualize_genre_popularity(data):
 
     plt.show()
 
-#Retrieve TV show data from TVMAZE API, add to the database, and visualize data
-#1: Fetch shows
+
+
+
+
+#--------------------TVMAZE API (Willow Traylor)-------------------------
+#----------Calling the API and Fetching Data----------
 def get_tvmaze_data(page=0):
     url = f"https://api.tvmaze.com/shows?page={page}"
     response = requests.get(url)
@@ -236,7 +240,7 @@ def get_tvmaze_data(page=0):
         shows.append(show)
     return shows
 
-#Connect to DB and add show data
+#----------Connect to DB and Add Show Data----------
 def insert_shows(conn, shows):
     cur = conn.cursor()
     for tv in shows:
@@ -256,12 +260,14 @@ def insert_shows(conn, shows):
 
 
 
-# =============== TMDB / MOVIES (Anna) =====================
 
-TMDB_API_KEY = "6b8a91e2db2dc97ffc2363b4dc8e6298"  # <-- PUT YOUR KEY HERE
+#--------------------TMDB API (Anna Kerhoulas)-------------------------
+#----------Initilizing API Key and Base Url----------
+
+TMDB_API_KEY = "6b8a91e2db2dc97ffc2363b4dc8e6298"
 TMDB_BASE_URL = "https://api.themoviedb.org/3/discover/movie"
 
-# From your earlier code – we're reusing as mapping
+#----------Change Genre IDs to Genre Names----------
 genre_mapping = {
     10759: "Action & Adventure",
     16: "Animation",
@@ -281,7 +287,6 @@ genre_mapping = {
     37: "Western",
     -1: "Brainsuck"
 }
-
 def get_genre_names(genre_ids):
     genres = []
     for g in genre_ids:
@@ -291,6 +296,7 @@ def get_genre_names(genre_ids):
             genres.append("Unknown")
     return genres
 
+#----------Get Data----------
 def get_tmdb_data(api_key: str, page_number: int = 1):
     """
     Fetch one page (20 results) of popular movies.
@@ -320,6 +326,7 @@ def get_tmdb_data(api_key: str, page_number: int = 1):
 
     return movies
 
+#----------Connect to Database and Store Data----------
 def store_movies_in_db(movie_list, conn):
     cur = conn.cursor()
     for m in movie_list:
@@ -390,6 +397,7 @@ def calculate_tmdb_genre_counts(conn, output_file="tmdb_genre_counts.txt"):
 
     return [{"genre": g, "count": c} for g, c in sorted_genres]
 
+#----------Visualization----------
 def visualize_tmdb_genres(genre_data, top_n=10):
     top = genre_data[:top_n]
     labels = [item["genre"] for item in top]
@@ -415,43 +423,24 @@ def visualize_tmdb_genres(genre_data, top_n=10):
 
 
 
-
-
+#--------------------Main Function (Claire Fuller, Willow Traylor, and Anna Kerhoulas)-------------------------
 if __name__ == '__main__':
     # use the DB_PATH constant from the top of the file
     conn = init_database(DB_PATH)
 
-    # ----- Spotify -----
+    #----------Spotify (Claire Fuller)----------
     fetch_and_store_spotify_tracks(conn)
     spotify_genre_data = calculate_spotify_genre_popularity(conn)
     visualize_genre_popularity(spotify_genre_data)
 
-    # ----- TVMaze -----
+    #----------TV Maze (Willow Traylor)----------
     shows = get_tvmaze_data(page=0)
     insert_shows(conn, shows)
     print(f"Inserted {len(shows)} TV shows into the Shows table.")
 
-    # ----- TMDB (Movies) -----
+    #----------TMDB (Anna Kerhoulas)----------
     fetch_and_store_tmdb_movies(conn)
     tmdb_genre_data = calculate_tmdb_genre_counts(conn)
     visualize_tmdb_genres(tmdb_genre_data)
 
     conn.close()
-
-
-###old main func
-#if __name__ == '__main__':
-    #my_spotipy_query()
-    # conn = init_database(db_name= DB_PATH)
-    # fetch_and_store_spotify_tracks(conn)
-    # calculate_spotify_genre_popularity(conn)
-    #DB_PATH = "media_data.db"
-    #conn = init_database(db_name=DB_PATH)
-    #fetch_and_store_spotify_tracks(conn)
-    #calculate_spotify_genre_popularity(conn)
-
-    # genre_data = calculate_spotify_genre_popularity(conn)
-    # visualize_genre_popularity(genre_data)
-    #TVMAZE api
-    #print(get_tvmaze_data(page=0))
-

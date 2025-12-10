@@ -215,52 +215,6 @@ def visualize_genre_popularity(data):
     plt.show()
 
 
-
-
-
-#--------------------TVMAZE API (Willow Traylor)-------------------------
-#----------Calling the API and Fetching Data----------
-def get_tvmaze_data(page=0):
-    url = f"https://api.tvmaze.com/shows?page={page}"
-    response = requests.get(url)
-    # If the page is out of range, TVMaze returns 404. Handle that:
-    if response.status_code != 200:
-        return []  # no data (page might not exist)
-    shows_data = response.json()
-    shows = []
-    for item in shows_data:
-        show = {
-        "id": item.get("id"),
-        "name": item.get("name"),
-        "premiere_date": item.get("premiered"),
-        "rating": item.get("rating", {}).get("average"),
-        "genres": item.get("genres", []),
-        "weight": item.get("weight")
-        }
-        shows.append(show)
-    return shows
-
-#----------Connect to DB and Add Show Data----------
-def insert_shows(conn, shows):
-    cur = conn.cursor()
-    for tv in shows:
-        cur.execute("""
-        INSERT OR IGNORE INTO Shows (id, name, premiere_date, avg_rating, genres, weight)
-        VALUES (?, ?, ?, ?, ?, ?);
-        """, (
-        tv.get('id'),
-        tv.get('name'),
-        tv.get('premiere_date'),
-        tv.get('rating'),
-        ", ".join(tv.get('genres', [])) if tv.get('genres') else None,
-        tv.get('weight')
-        ))
-    conn.commit()
-
-
-
-
-
 #--------------------TMDB API (Anna Kerhoulas)-------------------------
 #----------Initilizing API Key and Base Url----------
 
@@ -412,9 +366,108 @@ def visualize_tmdb_genres(genre_data, top_n=10):
     plt.show()
 
 
+# =============== TVMAZE / TV Shows (Willow) =====================
+# Fetch 25 shows from TVMAZE API
+def get_tvmaze_data(page=0):
+    url = f"https://api.tvmaze.com/shows?page={page}"
+    response = requests.get(url)
 
+    if response.status_code != 200:
+        print("Bad code")
+        return []
 
+    shows_data = response.json()[:25]
 
+    shows = []
+    for item in shows_data:
+        show = {
+            "id": item.get("id"),
+            "name": item.get("name"),
+            "premiere_date": item.get("premiered"),
+            "rating": item.get("rating", {}).get("average"),
+            "genres": item.get("genres", []),
+            "weight": item.get("weight")
+        }
+        shows.append(show)
+
+    return shows
+
+#Repeat get_tvmaze_data function to fetch 100 shows
+def fetch_minimum_shows(min_total=100):
+    all_shows = []
+    seen_ids = set()
+    page = 0
+
+    while len(all_shows) < min_total:
+        batch = get_tvmaze_data(page)
+        if not batch:
+            break  
+
+        #filter out duplicates
+        for show in batch:
+            if show["id"] not in seen_ids:
+                seen_ids.add(show["id"])
+                all_shows.append(show)
+
+        page += 1  #move to next page
+
+    return all_shows
+
+#Connect to DB and add show data
+def insert_shows(conn, shows):
+    cur = conn.cursor()
+    for tv in shows:
+        cur.execute("""
+        INSERT OR IGNORE INTO Shows (id, name, premiere_date, avg_rating, genres, weight)
+        VALUES (?, ?, ?, ?, ?, ?);
+        """, (
+        tv.get('id'),
+        tv.get('name'),
+        tv.get('premiere_date'),
+        tv.get('rating'),
+        ", ".join(tv.get('genres', [])) if tv.get('genres') else None,
+        tv.get('weight')
+        ))
+    conn.commit()
+
+#Calculate genre counts for the different medias
+# def get_all_genre_counts(conn):
+#     cur = conn.cursor()
+
+#     #Collect all genres from all tables
+#     tables = ["Shows", "Movies", "Songs"]
+#     genre_counts = {}
+
+#     for table in tables:
+#         cur.execute(f"SELECT genres FROM {table};")
+#         rows = cur.fetchall()
+
+#         for row in rows:
+#             genres_string = row[0]
+#             if not genres_string:
+#                 continue
+
+#             #Split comma-separated lists
+#             genres = [g.strip() for g in genres_string.split(",") if g.strip()]
+
+#             for genre in genres:
+#                 genre_counts[genre] = genre_counts.get(genre, 0) + 1
+
+#     return genre_counts
+
+#Visualize genre counts
+# def plot_genre_counts(genre_counts):
+#     genres = list(genre_counts.keys())
+#     counts = list(genre_counts.values())
+
+#     plt.figure(figsize=(12, 6))
+#     plt.bar(genres, counts)
+#     plt.xticks(rotation=75, ha="right")
+#     plt.ylabel("Count")
+#     plt.xlabel("Genre")
+#     plt.title("Genre Frequency Across TV Shows, Movies, and Songs")
+#     plt.tight_layout()
+#     plt.show()
 
 
 
@@ -433,10 +486,11 @@ if __name__ == '__main__':
     spotify_genre_data = calculate_spotify_genre_popularity(conn)
     visualize_genre_popularity(spotify_genre_data)
 
-    #----------TV Maze (Willow Traylor)----------
-    shows = get_tvmaze_data(page=0)
-    insert_shows(conn, shows)
-    print(f"Inserted {len(shows)} TV shows into the Shows table.")
+    # ----- TVMaze -----
+    shows = get_tvmaze_data(0)
+    min_shows = fetch_minimum_shows()
+    insert_shows(conn, min_shows)
+    print(f"Inserted {len(min_shows)} TV shows into the Shows table.")
 
     #----------TMDB (Anna Kerhoulas)----------
     fetch_and_store_tmdb_movies(conn)

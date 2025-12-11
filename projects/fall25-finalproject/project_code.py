@@ -140,29 +140,63 @@ def insert_songs(conn, songs):
 
     conn.commit()
 
-#----------Spotipy Fetching Helpers----------
-def fetch_and_store_spotify_tracks(conn):
+#--------------------fetch only 25 songs at a tiem for spotipy------
+def fetch_25_new_songs(conn, query="track:a"):
+    unique_new_songs = []
+    offset = 0
+    limit = 25
+
+    # load existing song IDs once
     cur = conn.cursor()
+    cur.execute("SELECT id FROM Songs")
+    existing_ids = {row[0] for row in cur.fetchall()}
 
-    cur.execute("SELECT COUNT(*) FROM Songs")
-    current = cur.fetchone()[0]
+    while len(unique_new_songs) < 25:
+        batch = get_spotify_data(query=query, limit=limit, offset=offset)
+        if not batch:
+            break
 
-    if current >= 100:
-        print("Reached 100 songs. Stopping.")
-        return
+        for song in batch:
+            sid = song.get("id")
+            if not sid:
+                continue
 
-    offset = current
-    print("Fetching offset =", offset)
+            if sid in existing_ids:
+                continue
 
-    # Use a stable huge-query search
-    tracks = get_spotify_data(query='e', limit=25, offset=offset)
+            unique_new_songs.append(song)
+            existing_ids.add(sid)
 
-    if len(tracks) == 0:
-        print("NO TRACKS RETURNED — Query too restrictive.")
-        return
+            if len(unique_new_songs) == 25:
+                return enrich_tracks_with_genres(unique_new_songs)
 
-    tracks = enrich_tracks_with_genres(tracks)
-    insert_songs(conn, tracks)
+        offset += limit
+
+    return enrich_tracks_with_genres(unique_new_songs)
+
+#----------Spotipy Fetching Helpers----------
+# def fetch_and_store_spotify_tracks(conn):
+#     cur = conn.cursor()
+
+#     cur.execute("SELECT COUNT(*) FROM Songs")
+#     current = cur.fetchone()[0]
+
+#     if current >= 100:
+#         print("Reached 100 songs. Stopping.")
+#         return
+
+#     offset = current
+#     print("Fetching offset =", offset)
+
+#     # Use a stable huge-query search
+#     tracks = get_spotify_data(query='e', limit=25, offset=offset)
+
+#     if len(tracks) == 0:
+#         print("NO TRACKS RETURNED — Query too restrictive.")
+#         return
+
+#     tracks = enrich_tracks_with_genres(tracks)
+#     insert_songs(conn, tracks)
 
 def my_spotipy_query(): # for debug
     tracks = []
@@ -635,7 +669,10 @@ if __name__ == '__main__':
     conn = init_database(DB_PATH)
 
     #----------Spotify (Claire Fuller)----------
-    fetch_and_store_spotify_tracks(conn)
+    # fetch_and_store_spotify_tracks(conn)
+    songs = fetch_25_new_songs(conn)
+    insert_songs(conn, songs)
+
     spotify_genre_data = calculate_spotify_genre_popularity(conn)
     visualize_genre_popularity(spotify_genre_data)
 
@@ -658,7 +695,12 @@ if __name__ == '__main__':
 
     print(find_most_popular_genres(conn))
 
+   
+
+
     conn.close()
+
+
 
 
 

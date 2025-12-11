@@ -430,45 +430,119 @@ def insert_shows(conn, shows):
         ))
     conn.commit()
 
-#Calculate genre counts for the different medias
-# def get_all_genre_counts(conn):
+#Find most popular genre for songs/movies/shows
+# def most_popular_genres(conn):
+#     result = {}
 #     cur = conn.cursor()
 
-#     #Collect all genres from all tables
-#     tables = ["Shows", "Movies", "Songs"]
-#     genre_counts = {}
+#     #1: Find most popular song genre
+#     cur.execute("""
+#         SELECT s.popularity, g.genre
+#         FROM songs s
+#         JOIN song_genres g ON s.id = g.song_id
+#         WHERE s.popularity IS NOT NULL
+#     """)
 
-#     for table in tables:
-#         cur.execute(f"SELECT genres FROM {table};")
-#         rows = cur.fetchall()
+#     song_sums = {}
+#     song_counts = {}
 
-#         for row in rows:
-#             genres_string = row[0]
-#             if not genres_string:
-#                 continue
+#     for pop, genre in cur.fetchall():
+#         if genre not in song_sums:
+#             song_sums[genre] = 0
+#             song_counts[genre] = 0
+#         song_sums[genre] += pop
+#         song_counts[genre] += 1
 
-#             #Split comma-separated lists
-#             genres = [g.strip() for g in genres_string.split(",") if g.strip()]
+#     best_song_genre = None
+#     best_song_avg = -1
 
-#             for genre in genres:
-#                 genre_counts[genre] = genre_counts.get(genre, 0) + 1
+#     for genre in song_sums:
+#         avg = song_sums[genre] / song_counts[genre]
+#         if avg > best_song_avg:
+#             best_song_avg = avg
+#             best_song_genre = genre
 
-#     return genre_counts
+#     if best_song_genre is not None:
+#         result['song'] = (best_song_genre, best_song_avg)
 
-#Visualize genre counts
-# def plot_genre_counts(genre_counts):
-#     genres = list(genre_counts.keys())
-#     counts = list(genre_counts.values())
 
-#     plt.figure(figsize=(12, 6))
-#     plt.bar(genres, counts)
-#     plt.xticks(rotation=75, ha="right")
-#     plt.ylabel("Count")
-#     plt.xlabel("Genre")
-#     plt.title("Genre Frequency Across TV Shows, Movies, and Songs")
-#     plt.tight_layout()
-#     plt.show()
 
+#     #2: Find most popular movie genre
+#     cur.execute("""
+#         SELECT m.popularity, g.genre
+#         FROM movies m
+#         JOIN movie_genres g ON m.id = g.movie_id
+#         WHERE m.popularity IS NOT NULL
+#     """)
+
+#     movie_sums = {}
+#     movie_counts = {}
+
+#     for pop, genre in cur.fetchall():
+#         try:
+#             pop = float(pop)
+#         except:
+#             continue
+
+#         if genre not in movie_sums:
+#             movie_sums[genre] = 0
+#             movie_counts[genre] = 0
+
+#         movie_sums[genre] += pop
+#         movie_counts[genre] += 1
+
+#     best_movie_genre = None
+#     best_movie_avg = -1
+
+#     for genre in movie_sums:
+#         avg = movie_sums[genre] / movie_counts[genre]
+#         if avg > best_movie_avg:
+#             best_movie_avg = avg
+#             best_movie_genre = genre
+
+#     if best_movie_genre is not None:
+#         result['movie'] = (best_movie_genre, best_movie_avg)
+
+
+
+#     #3: Find most popular show genre
+#     cur.execute("""
+#         SELECT weight, genres
+#         FROM Shows
+#         WHERE weight IS NOT NULL AND genres IS NOT NULL
+#     """)
+
+#     show_sums = {}
+#     show_counts = {}
+
+#     for pop, genre_str in cur.fetchall():
+#         try:
+#             pop = float(pop)
+#         except:
+#             continue
+
+#         genres = [g.strip() for g in genre_str.split(",") if g.strip()]
+
+#         for genre in genres:
+#             if genre not in show_sums:
+#                 show_sums[genre] = 0
+#                 show_counts[genre] = 0
+#             show_sums[genre] += pop
+#             show_counts[genre] += 1
+
+#     best_show_genre = None
+#     best_show_avg = -1
+
+#     for genre in show_sums:
+#         avg = show_sums[genre] / show_counts[genre]
+#         if avg > best_show_avg:
+#             best_show_avg = avg
+#             best_show_genre = genre
+
+#     if best_show_genre is not None:
+#         result['show'] = (best_show_genre, best_show_avg)
+
+#     return result
 
 
 

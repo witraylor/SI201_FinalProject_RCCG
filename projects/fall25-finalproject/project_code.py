@@ -371,7 +371,7 @@ def get_tvmaze_data(page=0):
     response = requests.get(url)
 
     if response.status_code != 200:
-        print("Bad code")
+        print("Error: unable to access TVMaze API")
         return []
 
     shows_data = response.json()[:25]
@@ -448,9 +448,9 @@ def visualize_show_rating_vs_weight(conn):
         ratings.append(r)
         weights.append(w)
 
-    # Plot
+    #plot ratings vs weights
     plt.figure(figsize=(8, 6))
-    plt.scatter(weights, ratings)  # no colors/styles specified (required)
+    plt.scatter(weights, ratings)  
 
     plt.xlabel("Weight")
     plt.ylabel("Average Rating")

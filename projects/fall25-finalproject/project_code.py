@@ -203,6 +203,8 @@ def calculate_spotify_genre_popularity(conn, output_file="spotify_genre_populari
 
 #-----------Visualization----------
 def visualize_genre_popularity(data):
+    data = data[:10]
+
     genres = [item["genre"] for item in data]
     avg_popularity = [item["avg_popularity"] for item in data]
 
@@ -212,11 +214,9 @@ def visualize_genre_popularity(data):
 
     plt.xlabel("Average Popularity")
     plt.ylabel("Genre")
-    plt.title("Average Spotify Popularity by Genre")
-
+    plt.title("Average Spotify Popularity by Genre (Top 10)")
 
     plt.tight_layout()
-
     plt.show()
 
 

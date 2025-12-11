@@ -66,7 +66,7 @@ def init_database(db_name):
     cur.execute("PRAGMA foreign_keys = ON;")
     # Create Movies table
     # DROP the old Movies table so the new schema can be created
-    cur.execute("DROP TABLE IF EXISTS Movies")
+    # cur.execute("DROP TABLE IF EXISTS sqlite_sequence")
     cur.execute("""
         CREATE TABLE IF NOT EXISTS Movies (
             id INTEGER PRIMARY KEY,
@@ -176,6 +176,8 @@ def my_spotipy_query(): # for debug
         tracks.extend(local_tracks)
     print(len(tracks))
 
+    conn.commit()
+
 #----------Calculations----------
 def calculate_spotify_genre_popularity(conn, output_file="spotify_genre_popularity.txt"):
     cur = conn.cursor()
@@ -274,7 +276,7 @@ def get_tmdb_data(api_key: str, page_number: int = 1):
             "popularity": item.get("popularity"),
             "revenue": 0,
             "avg_rating": item.get("vote_average"),
-            "genres": ", ".join(genre_names)   # ⭐ STORE NAMES HERE
+            "genres": ", ".join(genre_names)   # STORE NAMES HERE
         }
         movies.append(movie)
 
@@ -297,7 +299,7 @@ def store_movies_in_db(movie_list, conn):
                 m.get("popularity"),
                 m.get("revenue"),
                 m.get("avg_rating"),
-                m.get("genres"),   # ⭐ STORE NAMES, NOT IDS
+                m.get("genres"),   # STORE NAMES, NOT IDS
             )
         )
     conn.commit()
@@ -426,121 +428,158 @@ def insert_shows(conn, shows):
         ))
     conn.commit()
 
-#Find most popular genre for songs/movies/shows
-# def most_popular_genres(conn):
-#     result = {}
-#     cur = conn.cursor()
+#Visualize comparison of show ratings VS popularity
+def visualize_show_rating_vs_weight(conn):
+    cur = conn.cursor()
 
-#     #1: Find most popular song genre
-#     cur.execute("""
-#         SELECT s.popularity, g.genre
-#         FROM songs s
-#         JOIN song_genres g ON s.id = g.song_id
-#         WHERE s.popularity IS NOT NULL
-#     """)
+    cur.execute("""
+        SELECT avg_rating, weight
+        FROM Shows
+        WHERE avg_rating IS NOT NULL
+          AND weight IS NOT NULL
+    """)
 
-#     song_sums = {}
-#     song_counts = {}
+    rows = cur.fetchall()
 
-#     for pop, genre in cur.fetchall():
-#         if genre not in song_sums:
-#             song_sums[genre] = 0
-#             song_counts[genre] = 0
-#         song_sums[genre] += pop
-#         song_counts[genre] += 1
+    ratings = []
+    weights = []
 
-#     best_song_genre = None
-#     best_song_avg = -1
+    for r, w in rows:
+        ratings.append(r)
+        weights.append(w)
 
-#     for genre in song_sums:
-#         avg = song_sums[genre] / song_counts[genre]
-#         if avg > best_song_avg:
-#             best_song_avg = avg
-#             best_song_genre = genre
+    # Plot
+    plt.figure(figsize=(8, 6))
+    plt.scatter(weights, ratings)  # no colors/styles specified (required)
 
-#     if best_song_genre is not None:
-#         result['song'] = (best_song_genre, best_song_avg)
+    plt.xlabel("Weight")
+    plt.ylabel("Average Rating")
+    plt.title("Show Average Rating vs Weight")
 
+    plt.tight_layout()
+    plt.show()
 
+# ----------Calculate and compare popular genres across media types (Willow)---------
 
-#     #2: Find most popular movie genre
-#     cur.execute("""
-#         SELECT m.popularity, g.genre
-#         FROM movies m
-#         JOIN movie_genres g ON m.id = g.movie_id
-#         WHERE m.popularity IS NOT NULL
-#     """)
+#Find most popular song genre
+def most_popular_song_genre(conn):
+    cur = conn.cursor()
 
-#     movie_sums = {}
-#     movie_counts = {}
+    cur.execute("""
+        SELECT Genres.genre, Songs.popularity
+        FROM Genres
+        JOIN Songs ON Genres.song_id = Songs.id
+        WHERE Songs.popularity IS NOT NULL;
+    """)
 
-#     for pop, genre in cur.fetchall():
-#         try:
-#             pop = float(pop)
-#         except:
-#             continue
+    genre_sums = {}
+    genre_counts = {}
 
-#         if genre not in movie_sums:
-#             movie_sums[genre] = 0
-#             movie_counts[genre] = 0
+    for genre, pop in cur.fetchall():
+        if genre not in genre_sums:
+            genre_sums[genre] = 0
+            genre_counts[genre] = 0
+        genre_sums[genre] += pop
+        genre_counts[genre] += 1
 
-#         movie_sums[genre] += pop
-#         movie_counts[genre] += 1
+    best_genre = None
+    best_avg = -1
 
-#     best_movie_genre = None
-#     best_movie_avg = -1
+    for genre in genre_sums:
+        avg = genre_sums[genre] / genre_counts[genre]
+        if avg > best_avg:
+            best_avg = avg
+            best_genre = genre
 
-#     for genre in movie_sums:
-#         avg = movie_sums[genre] / movie_counts[genre]
-#         if avg > best_movie_avg:
-#             best_movie_avg = avg
-#             best_movie_genre = genre
+    return best_genre, best_avg
 
-#     if best_movie_genre is not None:
-#         result['movie'] = (best_movie_genre, best_movie_avg)
+#Find most popular movie genre
+def most_popular_movie_genre(conn):
+    cur = conn.cursor()
 
+    cur.execute("""
+        SELECT popularity, genres
+        FROM Movies
+        WHERE popularity IS NOT NULL AND genres IS NOT NULL;
+    """)
 
+    genre_sums = {}
+    genre_counts = {}
 
-#     #3: Find most popular show genre
-#     cur.execute("""
-#         SELECT weight, genres
-#         FROM Shows
-#         WHERE weight IS NOT NULL AND genres IS NOT NULL
-#     """)
+    for pop, genre_str in cur.fetchall():
+        try:
+            pop = float(pop)
+        except:
+            continue
 
-#     show_sums = {}
-#     show_counts = {}
+        #split comma separated lists
+        genres = [g.strip() for g in genre_str.split(",") if g.strip()]
 
-#     for pop, genre_str in cur.fetchall():
-#         try:
-#             pop = float(pop)
-#         except:
-#             continue
+        for genre in genres:
+            if genre not in genre_sums:
+                genre_sums[genre] = 0
+                genre_counts[genre] = 0
+            genre_sums[genre] += pop
+            genre_counts[genre] += 1
 
-#         genres = [g.strip() for g in genre_str.split(",") if g.strip()]
+    best_genre = None
+    best_avg = -1
 
-#         for genre in genres:
-#             if genre not in show_sums:
-#                 show_sums[genre] = 0
-#                 show_counts[genre] = 0
-#             show_sums[genre] += pop
-#             show_counts[genre] += 1
+    for genre in genre_sums:
+        avg = genre_sums[genre] / genre_counts[genre]
+        if avg > best_avg:
+            best_avg = avg
+            best_genre = genre
 
-#     best_show_genre = None
-#     best_show_avg = -1
+    return best_genre, best_avg
 
-#     for genre in show_sums:
-#         avg = show_sums[genre] / show_counts[genre]
-#         if avg > best_show_avg:
-#             best_show_avg = avg
-#             best_show_genre = genre
+#Find most popular show genre
+def most_popular_show_genre(conn):
+    cur = conn.cursor()
 
-#     if best_show_genre is not None:
-#         result['show'] = (best_show_genre, best_show_avg)
+    cur.execute("""
+        SELECT weight, genres
+        FROM Shows
+        WHERE weight IS NOT NULL AND genres IS NOT NULL;
+    """)
 
-#     return result
+    genre_sums = {}
+    genre_counts = {}
 
+    for pop, genre_str in cur.fetchall():
+        try:
+            pop = float(pop)
+        except:
+            continue
 
+        #Separate comma separated lists
+        genres = [g.strip() for g in genre_str.split(",") if g.strip()]
+
+        for genre in genres:
+            if genre not in genre_sums:
+                genre_sums[genre] = 0
+                genre_counts[genre] = 0
+            genre_sums[genre] += pop
+            genre_counts[genre] += 1
+
+    best_genre = None
+    best_avg = -1
+
+    for genre in genre_sums:
+        avg = genre_sums[genre] / genre_counts[genre]
+        if avg > best_avg:
+            best_avg = avg
+            best_genre = genre
+
+    return best_genre, best_avg
+
+#Compare popular genres for media types
+def find_most_popular_genres(conn):
+    return {
+        "songs": most_popular_song_genre(conn),
+        "movies": most_popular_movie_genre(conn),
+        "shows": most_popular_show_genre(conn)
+    }
 
 
 
@@ -556,15 +595,17 @@ if __name__ == '__main__':
     spotify_genre_data = calculate_spotify_genre_popularity(conn)
     visualize_genre_popularity(spotify_genre_data)
 
-    # ----- TVMaze -----
-    shows = get_tvmaze_data(0)
-    min_shows = fetch_minimum_shows()
-    insert_shows(conn, min_shows)
-    print(f"Inserted {len(min_shows)} TV shows into the Shows table.")
-
     #----------TMDB (Anna Kerhoulas)----------
     fetch_and_store_tmdb_movies(conn)
     tmdb_genre_data = calculate_tmdb_genre_counts(conn)
     visualize_tmdb_genres(tmdb_genre_data)
+
+        # ----- TVMaze -----
+    min_shows = fetch_minimum_shows()
+    insert_shows(conn, min_shows)
+    print(f"Inserted {len(min_shows)} TV shows into the Shows table.")
+    visualize_show_rating_vs_weight(conn)
+
+    print(find_most_popular_genres(conn))
 
     conn.close()

@@ -10,6 +10,7 @@ from datetime import datetime
 import requests
 from collections import Counter
 
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, "media_data.db")
 
@@ -219,13 +220,14 @@ def visualize_genre_popularity(data):
     plt.show()
 
 
-#--------------------TMDB API (Anna Kerhoulas)-------------------------
-#----------Initializing API Key and Base Url----------
+
+#-------------------- TMDB API (Anna Kerhoulas) -------------------------
+#---------- Initializing API Key and Base Url ----------
 
 TMDB_API_KEY = "6b8a91e2db2dc97ffc2363b4dc8e6298"
 TMDB_BASE_URL = "https://api.themoviedb.org/3/discover/movie"
 
-#----------Change Genre IDs to Genre Names----------
+#---------- Change Genre IDs to Genre Names ----------
 genre_mapping = {
     10759: "Action & Adventure",
     16: "Animation",
@@ -247,12 +249,40 @@ genre_mapping = {
 }
 
 def get_genre_names(genre_ids):
+    """
+    Convert a list of TMDB genre IDs to genre names using genre_mapping.
+    """
     return [genre_mapping.get(g, "Unknown") for g in genre_ids]
 
-#----------Get Data----------
+#---------- Database Setup Helper (if you need it here) ----------
+def init_database(db_name="media_project.db"):
+    """
+    Create/open a SQLite database and ensure the Movies table exists.
+    Adjust schema if your project already defines it differently.
+    """
+    conn = sqlite3.connect(db_name)
+    cur = conn.cursor()
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS Movies (
+            id INTEGER PRIMARY KEY,
+            title TEXT,
+            release_date TEXT,
+            popularity REAL,
+            revenue INTEGER,
+            avg_rating REAL,
+            genres TEXT
+        )
+        """
+    )
+    conn.commit()
+    return conn
+
+#---------- Get Data from TMDB ----------
 def get_tmdb_data(api_key: str, page_number: int = 1):
     """
-    Fetch one page (20 results) of popular movies.
+    Fetch one page (20 results) of popular movies from TMDB Discover endpoint.
+    Returns a list of movie dicts with genre names already resolved.
     """
     params = {
         "api_key": api_key,
@@ -274,16 +304,20 @@ def get_tmdb_data(api_key: str, page_number: int = 1):
             "title": item.get("title"),
             "release_date": item.get("release_date"),
             "popularity": item.get("popularity"),
-            "revenue": 0,
+            "revenue": 0,  # not in this endpoint, so default to 0
             "avg_rating": item.get("vote_average"),
-            "genres": ", ".join(genre_names)   # STORE NAMES HERE
+            "genres": ", ".join(genre_names)  # store genre NAMES here
         }
         movies.append(movie)
 
     return movies
 
-#----------Connect to Database and Store Data----------
+#---------- Store Data in Database ----------
 def store_movies_in_db(movie_list, conn):
+    """
+    Insert a list of movie dictionaries into the Movies table.
+    Uses INSERT OR IGNORE to avoid duplicate primary keys.
+    """
     cur = conn.cursor()
     for m in movie_list:
         cur.execute(
@@ -299,32 +333,57 @@ def store_movies_in_db(movie_list, conn):
                 m.get("popularity"),
                 m.get("revenue"),
                 m.get("avg_rating"),
-                m.get("genres"),   # STORE NAMES, NOT IDS
+                m.get("genres"),   # store names, not IDs
             )
         )
     conn.commit()
 
-def fetch_and_store_tmdb_movies(conn, api_key: str = TMDB_API_KEY):
+#---------- Fetch EXACTLY 25 New Movies Per Run ----------
+def fetch_and_store_tmdb_movies(conn, api_key: str = TMDB_API_KEY, batch_size: int = 25):
     """
-    Fetch 20 movies at a time until we have at least 100 movies.
+    Fetch TMDB movies and insert EXACTLY `batch_size` NEW movies
+    into the Movies table per run (unless TMDB has no more new ones).
+
+    - Reads existing IDs from the DB
+    - Fetches pages starting from page 1
+    - Skips movies already in the DB
+    - Stops after collecting batch_size new movies
     """
     cur = conn.cursor()
-    cur.execute("SELECT COUNT(*) FROM Movies")
-    current = cur.fetchone()[0]
+    cur.execute("SELECT id FROM Movies")
+    existing_ids = {row[0] for row in cur.fetchall() if row[0] is not None}
 
-    if current >= 100:
-        print("Already have at least 100 movies. No more TMDB fetch.")
+    new_movies = []
+    page = 1
+
+    while len(new_movies) < batch_size:
+        movies = get_tmdb_data(api_key, page_number=page)
+        if not movies:
+            # No more data from TMDB
+            break
+
+        for m in movies:
+            if m["id"] not in existing_ids:
+                new_movies.append(m)
+                existing_ids.add(m["id"])
+                if len(new_movies) == batch_size:
+                    break
+
+        page += 1
+
+    if not new_movies:
+        print("No new TMDB movies found to insert.")
         return
 
-    next_page = (current // 20) + 1
-    print(f"Currently have {current} movies. Fetching TMDB page {next_page}...")
-    movies = get_tmdb_data(api_key, page_number=next_page)
-    print(f"Retrieved {len(movies)} movies from TMDB.")
-    store_movies_in_db(movies, conn)
+    store_movies_in_db(new_movies, conn)
+    print(f"Inserted {len(new_movies)} new TMDB movies into the database.")
 
+#---------- Calculate Genre Counts ----------
 def calculate_tmdb_genre_counts(conn, output_file="tmdb_genre_counts.txt"):
     """
-    Count genres based directly on stored *genre names*.
+    Count genres based directly on stored *genre names* in the Movies table.
+    Writes counts to a text file and returns a list of dicts:
+    [{"genre": <name>, "count": <int>}, ...]
     """
     cur = conn.cursor()
     cur.execute("SELECT genres FROM Movies")
@@ -349,19 +408,27 @@ def calculate_tmdb_genre_counts(conn, output_file="tmdb_genre_counts.txt"):
 
     return [{"genre": g, "count": c} for g, c in sorted_genres]
 
-#----------Visualization----------
+#---------- Visualization (Colorful!) ----------
 def visualize_tmdb_genres(genre_data, top_n=10):
+    """
+    Visualize the top N genres as a colorful horizontal bar chart.
+    """
     top = genre_data[:top_n]
     labels = [item["genre"] for item in top]
     counts = [item["count"] for item in top]
 
     plt.figure(figsize=(10, 6))
-    plt.barh(labels, counts)
+
+    # Use a colormap for multiple distinct colors
+    colors = plt.cm.tab20(range(len(labels)))
+    plt.barh(labels, counts, color=colors)
+
     plt.xlabel("Number of Movies")
     plt.ylabel("Genre")
     plt.title(f"Top {top_n} TMDB Movie Genres")
     plt.tight_layout()
     plt.show()
+
 
 
 # =============== TVMAZE / TV Shows (Willow) =====================
@@ -596,9 +663,16 @@ if __name__ == '__main__':
     visualize_genre_popularity(spotify_genre_data)
 
     #----------TMDB (Anna Kerhoulas)----------
-    fetch_and_store_tmdb_movies(conn)
-    tmdb_genre_data = calculate_tmdb_genre_counts(conn)
-    visualize_tmdb_genres(tmdb_genre_data)
+    # fetch_and_store_tmdb_movies(conn)
+    # tmdb_genre_data = calculate_tmdb_genre_counts(conn)
+    # visualize_tmdb_genres(tmdb_genre_data)
+    conn = init_database("media_project.db")
+
+    # Each call adds up to 25 NEW movies
+    fetch_and_store_tmdb_movies(conn, api_key=TMDB_API_KEY, batch_size=25)
+
+    genre_data = calculate_tmdb_genre_counts(conn)
+    visualize_tmdb_genres(genre_data, top_n=10)
 
         # ----- TVMaze -----
     min_shows = fetch_minimum_shows()

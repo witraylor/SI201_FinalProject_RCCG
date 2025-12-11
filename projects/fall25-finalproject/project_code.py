@@ -390,8 +390,8 @@ def get_tvmaze_data(page=0):
 
     return shows
 
-#Repeat get_tvmaze_data function to fetch 100 shows
-def fetch_minimum_shows(min_total=100):
+#Repeat get_tvmaze_data function to fetch 25 shows
+def fetch_minimum_shows(min_total=25):
     all_shows = []
     seen_ids = set()
     page = 0

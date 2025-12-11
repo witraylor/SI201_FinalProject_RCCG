@@ -254,29 +254,6 @@ def get_genre_names(genre_ids):
     """
     return [genre_mapping.get(g, "Unknown") for g in genre_ids]
 
-#---------- Database Setup Helper (if you need it here) ----------
-def init_database(db_name="media_project.db"):
-    """
-    Create/open a SQLite database and ensure the Movies table exists.
-    Adjust schema if your project already defines it differently.
-    """
-    conn = sqlite3.connect(db_name)
-    cur = conn.cursor()
-    cur.execute(
-        """
-        CREATE TABLE IF NOT EXISTS Movies (
-            id INTEGER PRIMARY KEY,
-            title TEXT,
-            release_date TEXT,
-            popularity REAL,
-            revenue INTEGER,
-            avg_rating REAL,
-            genres TEXT
-        )
-        """
-    )
-    conn.commit()
-    return conn
 
 #---------- Get Data from TMDB ----------
 def get_tmdb_data(api_key: str, page_number: int = 1):
@@ -682,3 +659,32 @@ if __name__ == '__main__':
     print(find_most_popular_genres(conn))
 
     conn.close()
+
+
+
+#chatted main
+# if __name__ == '__main__':
+#     # use the DB_PATH constant from the top of the file
+#     conn = init_database(DB_PATH)
+
+#     #----------Spotify (Claire Fuller)----------
+#     fetch_and_store_spotify_tracks(conn)
+#     spotify_genre_data = calculate_spotify_genre_popularity(conn)
+#     visualize_genre_popularity(spotify_genre_data)
+
+#     #----------TMDB (Anna Kerhoulas)----------
+#     # Each call adds up to 25 NEW movies
+#     fetch_and_store_tmdb_movies(conn, api_key=TMDB_API_KEY, batch_size=25)
+
+#     genre_data = calculate_tmdb_genre_counts(conn)
+#     visualize_tmdb_genres(genre_data, top_n=10)
+
+#     # ----- TVMaze -----
+#     min_shows = fetch_minimum_shows()
+#     insert_shows(conn, min_shows)
+#     print(f"Inserted {len(min_shows)} TV shows into the Shows table.")
+#     visualize_show_rating_vs_weight(conn)
+
+#     print(find_most_popular_genres(conn))
+
+#     conn.close()

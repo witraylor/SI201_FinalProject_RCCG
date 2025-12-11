@@ -667,7 +667,7 @@ if __name__ == '__main__':
     # tmdb_genre_data = calculate_tmdb_genre_counts(conn)
     # visualize_tmdb_genres(tmdb_genre_data)
     conn = init_database("media_project.db")
-
+    
     # Each call adds up to 25 NEW movies
     fetch_and_store_tmdb_movies(conn, api_key=TMDB_API_KEY, batch_size=25)
 

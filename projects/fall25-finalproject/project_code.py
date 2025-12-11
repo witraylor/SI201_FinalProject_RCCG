@@ -65,6 +65,8 @@ def init_database(db_name):
     # Enable foreign key constraints (in case we use them)
     cur.execute("PRAGMA foreign_keys = ON;")
     # Create Movies table
+    # DROP the old Movies table so the new schema can be created
+    cur.execute("DROP TABLE IF EXISTS Movies")
     cur.execute("""
         CREATE TABLE IF NOT EXISTS Movies (
             id INTEGER PRIMARY KEY,
@@ -73,7 +75,7 @@ def init_database(db_name):
             popularity REAL,
             revenue INTEGER,
             avg_rating REAL,
-            genre_ids TEXT
+            genres TEXT
         )
     """)        
     # Create Songs table
@@ -216,7 +218,7 @@ def visualize_genre_popularity(data):
 
 
 #--------------------TMDB API (Anna Kerhoulas)-------------------------
-#----------Initilizing API Key and Base Url----------
+#----------Initializing API Key and Base Url----------
 
 TMDB_API_KEY = "6b8a91e2db2dc97ffc2363b4dc8e6298"
 TMDB_BASE_URL = "https://api.themoviedb.org/3/discover/movie"
@@ -241,14 +243,9 @@ genre_mapping = {
     37: "Western",
     -1: "Brainsuck"
 }
+
 def get_genre_names(genre_ids):
-    genres = []
-    for g in genre_ids:
-        if g in genre_mapping:
-            genres.append(genre_mapping[g])
-        else:
-            genres.append("Unknown")
-    return genres
+    return [genre_mapping.get(g, "Unknown") for g in genre_ids]
 
 #----------Get Data----------
 def get_tmdb_data(api_key: str, page_number: int = 1):
@@ -267,14 +264,17 @@ def get_tmdb_data(api_key: str, page_number: int = 1):
 
     movies = []
     for item in data.get("results", []):
+        genre_ids = item.get("genre_ids", [])
+        genre_names = get_genre_names(genre_ids)
+
         movie = {
             "id": item.get("id"),
             "title": item.get("title"),
             "release_date": item.get("release_date"),
             "popularity": item.get("popularity"),
-            "revenue": 0,  # this endpoint doesn't give revenue
+            "revenue": 0,
             "avg_rating": item.get("vote_average"),
-            "genre_ids": json.dumps(item.get("genre_ids", []))
+            "genres": ", ".join(genre_names)   # ⭐ STORE NAMES HERE
         }
         movies.append(movie)
 
@@ -287,7 +287,7 @@ def store_movies_in_db(movie_list, conn):
         cur.execute(
             """
             INSERT OR IGNORE INTO Movies
-            (id, title, release_date, popularity, revenue, avg_rating, genre_ids)
+            (id, title, release_date, popularity, revenue, avg_rating, genres)
             VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
             (
@@ -297,7 +297,7 @@ def store_movies_in_db(movie_list, conn):
                 m.get("popularity"),
                 m.get("revenue"),
                 m.get("avg_rating"),
-                m.get("genre_ids"),
+                m.get("genres"),   # ⭐ STORE NAMES, NOT IDS
             )
         )
     conn.commit()
@@ -322,22 +322,18 @@ def fetch_and_store_tmdb_movies(conn, api_key: str = TMDB_API_KEY):
 
 def calculate_tmdb_genre_counts(conn, output_file="tmdb_genre_counts.txt"):
     """
-    Read Movies.genre_ids, convert to names, count occurrences.
+    Count genres based directly on stored *genre names*.
     """
     cur = conn.cursor()
-    cur.execute("SELECT genre_ids FROM Movies")
+    cur.execute("SELECT genres FROM Movies")
     rows = cur.fetchall()
 
     counts = Counter()
 
-    for (genre_ids_str,) in rows:
-        if not genre_ids_str:
+    for (genres_str,) in rows:
+        if not genres_str:
             continue
-        try:
-            id_list = json.loads(genre_ids_str)
-        except json.JSONDecodeError:
-            id_list = []
-        names = get_genre_names(id_list)
+        names = [g.strip() for g in genres_str.split(",") if g.strip()]
         for g in names:
             counts[g] += 1
 

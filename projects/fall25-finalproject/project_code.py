@@ -26,7 +26,7 @@ sp = spotipy.Spotify(
         client_secret=CLIENT_SECRET
     )
 )
-
+    
 #----------Getting Data----------
 def get_spotify_data(query="track:a", limit=25, offset=0):
     print(f"call to get sptoify data: query = {query} limit = {limit} offset = {offset}")
@@ -60,11 +60,108 @@ def enrich_tracks_with_genres(tracks): #find genre for spotipy through artist id
     return tracks
 
 #----------Initialize ALL Table Sets----------
+
+"""
+Utility function to create spotify specific db tables
+"""
+def _init_spotify_tables(cur):
+    # ***** SPOTIFY TABLES *****
+
+    # ***** ORIGINAL TABLES WITH DUPS *****
+    # Create Songs table
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS Songs (
+            id TEXT PRIMARY KEY,
+            title TEXT,
+            artist TEXT,
+            album TEXT,
+            popularity INTEGER,
+            release_date TEXT
+        )
+    """)
+
+    #genres for songs
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS Genres (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            song_id TEXT,
+            genre TEXT,
+            FOREIGN KEY(song_id) REFERENCES Songs(id)
+        );
+    """)
+
+    # ***** TABLES NO DUPS *****
+
+    # Create Artists table
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS SpotifyArtists (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            artist_name TEXT UNIQUE
+        )
+    """)
+    # Create Albums table
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS SpotifyAlbums (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            album_name TEXT UNIQUE
+        )
+    """)
+
+    # Create Genres table
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS SpotifyGenres (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            genre_name TEXT UNIQUE
+        )
+    """)
+
+    # Create Songs table
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS SpotifySongs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT,
+            popularity INTEGER,
+            release_date TEXT,
+            artist_id INTEGER NOT NULL,
+            FOREIGN KEY (artist_id) REFERENCES SpotifyArtists(id)
+        )
+    """)
+
+    # ***** JUNCTION TABLES, NO DUPS
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS SongsToGenre (
+            song_id     INTEGER NOT NULL,
+            genre_id    INTEGER NOT NULL,
+            -- Composite primary key prevents duplicate pairs
+            PRIMARY KEY (song_id, genre_id),
+            FOREIGN KEY (song_id) REFERENCES SpotifySongs(id) ON DELETE CASCADE,
+            FOREIGN KEY (genre_id) REFERENCES SpotifyGenres(id) ON DELETE CASCADE
+        )                
+    """)
+
+
+def _get_id_from_table_by_name(cur, table_name, column_name, name):
+    index_id = -1
+
+    query = f"SELECT id FROM {table_name} WHERE {column_name} = ?"
+    cur.execute(query, (name,))
+    result = cur.fetchone()
+    if result:
+        index_id = result[0]
+    else:
+        # Handle unexpected error
+        print("ERROR: Could not find the album ID after insert attempt.")    
+    
+    return index_id
+
 def init_database(db_name):
     conn = sqlite3.connect(db_name)
     cur = conn.cursor()
     # Enable foreign key constraints (in case we use them)
     cur.execute("PRAGMA foreign_keys = ON;")
+
+    _init_spotify_tables(cur)
+    
     # Create Movies table
     # DROP the old Movies table so the new schema can be created
     # cur.execute("DROP TABLE IF EXISTS sqlite_sequence")
@@ -78,19 +175,9 @@ def init_database(db_name):
             avg_rating REAL,
             genres TEXT
         )
-    """)        
-    # Create Songs table
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS Songs (
-            id TEXT PRIMARY KEY,
-            title TEXT,
-            artist TEXT,
-            album TEXT,
-            popularity INTEGER,
-            release_date TEXT
+    """)    
 
-        )
-    """)
+    # **** IMDB TABLES *****
     # Create Shows table
     cur.execute("""
         CREATE TABLE IF NOT EXISTS Shows (
@@ -102,15 +189,7 @@ def init_database(db_name):
             weight INTEGER
         );
     """)
-    #genres for songs
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS Genres (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            song_id TEXT,
-            genre TEXT,
-            FOREIGN KEY(song_id) REFERENCES Songs(id)
-        );
-    """)
+
 
     conn.commit()
     return conn
@@ -119,6 +198,59 @@ def init_database(db_name):
 def insert_songs(conn, songs):
     cur = conn.cursor()
     for s in songs:
+
+        # Add album name to SpotifyAlbums table
+        album_name = s.get('album')
+
+        cur.execute("""
+            INSERT OR IGNORE INTO SpotifyAlbums (album_name)
+            VALUES (?);
+        """, (album_name,))
+        album_id = _get_id_from_table_by_name(cur, "SpotifyAlbums", "album_name", album_name)
+
+        # Add artist name to SpotifyArtists table
+        artist_name = s.get('artist')
+        cur.execute("""
+            INSERT OR IGNORE INTO SpotifyArtists (artist_name)
+            VALUES (?);
+        """, (artist_name,))
+        artist_id = _get_id_from_table_by_name(cur, "SpotifyArtists", "artist_name", artist_name)
+
+        genres = s.get('genres', []) #insert genres seperately
+        genre_ids = []
+
+        for genre_name in genres:
+            # Add genre to SpotifyGenres table
+            cur.execute("""
+                INSERT OR IGNORE INTO SpotifyGenres (genre_name)
+                VALUES (?);
+            """, (genre_name,))
+            genre_index = _get_id_from_table_by_name(cur, "SpotifyGenres", "genre_name", genre_name) 
+            genre_ids.append(genre_index) 
+
+        song_name = s.get('name')
+        cur.execute("""
+            INSERT OR IGNORE INTO SpotifySongs (title, popularity, release_date, artist_id)
+            VALUES (?, ?, ?, ?);
+            """, (
+            song_name,
+            s.get('popularity'),
+            s.get('release_date'),
+            artist_id
+        ))
+        song_id = _get_id_from_table_by_name(cur, "SpotifySongs", "title", song_name)
+  
+        for genre_id in genre_ids:
+            cur.execute("""
+                INSERT OR IGNORE INTO SongsToGenre (song_id, genre_id)
+                VALUES (?, ?);
+            """, (
+                song_id,
+                genre_id
+                )
+            )
+        
+        # ORIGINAL SONG INSERTION
         cur.execute("""
             INSERT OR IGNORE INTO Songs (id, title, artist, album, popularity, release_date)
             VALUES (?, ?, ?, ?, ?, ?);
@@ -659,10 +791,6 @@ def find_most_popular_genres(conn):
         "shows": most_popular_show_genre(conn)
     }
 
-
-
-
-
 #--------------------Main Function (Claire Fuller, Willow Traylor, and Anna Kerhoulas)-------------------------
 if __name__ == '__main__':
     # use the DB_PATH constant from the top of the file
@@ -695,13 +823,7 @@ if __name__ == '__main__':
 
     print(find_most_popular_genres(conn))
 
-   
-
-
     conn.close()
-
-
-
 
 
 #chatted main

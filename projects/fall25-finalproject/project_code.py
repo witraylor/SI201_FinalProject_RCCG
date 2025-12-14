@@ -69,26 +69,26 @@ def _init_spotify_tables(cur):
 
     # ***** ORIGINAL TABLES WITH DUPS *****
     # Create Songs table
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS Songs (
-            id TEXT PRIMARY KEY,
-            title TEXT,
-            artist TEXT,
-            album TEXT,
-            popularity INTEGER,
-            release_date TEXT
-        )
-    """)
+    # cur.execute("""
+    #     CREATE TABLE IF NOT EXISTS Songs (
+    #         id TEXT PRIMARY KEY,
+    #         title TEXT,
+    #         artist TEXT,
+    #         album TEXT,
+    #         popularity INTEGER,
+    #         release_date TEXT
+    #     )
+    # """)
 
-    #genres for songs
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS Genres (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            song_id TEXT,
-            genre TEXT,
-            FOREIGN KEY(song_id) REFERENCES Songs(id)
-        );
-    """)
+    # #genres for songs
+    # cur.execute("""
+    #     CREATE TABLE IF NOT EXISTS Genres (
+    #         id INTEGER PRIMARY KEY AUTOINCREMENT,
+    #         song_id TEXT,
+    #         genre TEXT,
+    #         FOREIGN KEY(song_id) REFERENCES Songs(id)
+    #     );
+    # """)
 
     # ***** TABLES NO DUPS *****
 
@@ -251,24 +251,24 @@ def insert_songs(conn, songs):
             )
         
         # ORIGINAL SONG INSERTION
-        cur.execute("""
-            INSERT OR IGNORE INTO Songs (id, title, artist, album, popularity, release_date)
-            VALUES (?, ?, ?, ?, ?, ?);
-        """, (
-            s.get('id'),
-            s.get('name'),
-            s.get('artist'),
-            s.get('album'),
-            s.get('popularity'),
-            s.get('release_date')
-        ))
+        # cur.execute("""
+        #     INSERT OR IGNORE INTO Songs (id, title, artist, album, popularity, release_date)
+        #     VALUES (?, ?, ?, ?, ?, ?);
+        # """, (
+        #     s.get('id'),
+        #     s.get('name'),
+        #     s.get('artist'),
+        #     s.get('album'),
+        #     s.get('popularity'),
+        #     s.get('release_date')
+        # ))
 
-        genres = s.get('genres', []) #insert genres seperately
-        for g in genres:
-            cur.execute("""
-                INSERT OR IGNORE INTO Genres (song_id, genre)
-                VALUES (?, ?)
-            """, (s.get('id'), g))
+        # genres = s.get('genres', []) #insert genres seperately
+        # for g in genres:
+        #     cur.execute("""
+        #         INSERT OR IGNORE INTO Genres (song_id, genre)
+        #         VALUES (?, ?)
+        #     """, (s.get('id'), g))
 
     conn.commit()
 
@@ -280,8 +280,8 @@ def fetch_25_new_songs(conn, query="track:a"):
 
     # load existing song IDs once
     cur = conn.cursor()
-    cur.execute("SELECT id FROM Songs")
-    existing_ids = {row[0] for row in cur.fetchall()}
+    cur.execute("SELECT title FROM SpotifySongs")
+    existing_titles = {row[0] for row in cur.fetchall()}
 
     while len(unique_new_songs) < 25:
         batch = get_spotify_data(query=query, limit=limit, offset=offset)
@@ -289,15 +289,15 @@ def fetch_25_new_songs(conn, query="track:a"):
             break
 
         for song in batch:
-            sid = song.get("id")
-            if not sid:
+            name = song.get("name")
+            if not name:
                 continue
 
-            if sid in existing_ids:
+            if name in existing_titles:
                 continue
 
             unique_new_songs.append(song)
-            existing_ids.add(sid)
+            existing_titles.add(name)
 
             if len(unique_new_songs) == 25:
                 return enrich_tracks_with_genres(unique_new_songs)
@@ -348,24 +348,24 @@ def my_spotipy_query(): # for debug
 #----------Calculations----------
 def calculate_spotify_genre_popularity(conn, output_file="spotify_genre_popularity.txt"):
     cur = conn.cursor()
+
     query = """
-        SELECT g.genre, AVG(s.popularity) AS avg_popularity
-        FROM Genres g
-        JOIN Songs s ON g.song_id = s.id
-        GROUP BY g.genre
+        SELECT g.genre_name, AVG(s.popularity) AS avg_popularity
+        FROM SpotifySongs s
+        JOIN SongsToGenre sg ON s.id = sg.song_id
+        JOIN SpotifyGenres g ON sg.genre_id = g.id
+        GROUP BY g.genre_name
         ORDER BY avg_popularity DESC;
     """
 
     rows = cur.execute(query).fetchall()
 
-    #results to a text file
     with open(output_file, "w") as f:
         for genre, avg_pop in rows:
             f.write(f"{genre}: {avg_pop:.2f}\n")
 
-    print(f"Written genre popularity data to {output_file}")
-
     return [{"genre": genre, "avg_popularity": avg_pop} for genre, avg_pop in rows]
+
 
 #-----------Visualization----------
 def visualize_genre_popularity(data):
@@ -676,10 +676,11 @@ def most_popular_song_genre(conn):
     cur = conn.cursor()
 
     cur.execute("""
-        SELECT Genres.genre, Songs.popularity
-        FROM Genres
-        JOIN Songs ON Genres.song_id = Songs.id
-        WHERE Songs.popularity IS NOT NULL;
+        SELECT g.genre_name, s.popularity
+        FROM SpotifySongs s
+        JOIN SongsToGenre sg ON s.id = sg.song_id
+        JOIN SpotifyGenres g ON sg.genre_id = g.id
+        WHERE s.popularity IS NOT NULL;
     """)
 
     genre_sums = {}
@@ -793,88 +794,88 @@ def find_most_popular_genres(conn):
 
 
 # ----------Extra Credit Visualizations (Willow)---------
-#Visualize comparison of song release date VS popularity
-def visualize_song_release_and_popularity(conn):
-    cur = conn.cursor()
+# #Visualize comparison of song release date VS popularity
+# def visualize_song_release_and_popularity(conn):
+#     cur = conn.cursor()
 
-    cur.execute("""
-        SELECT release_date, popularity
-        FROM Songs
-        WHERE release_date IS NOT NULL
-          AND popularity IS NOT NULL
-    """)
+#     cur.execute("""
+#         SELECT release_date, popularity
+#         FROM Songs
+#         WHERE release_date IS NOT NULL
+#           AND popularity IS NOT NULL
+#     """)
 
-    rows = cur.fetchall()
+#     rows = cur.fetchall()
 
-    decade_sums = {}
-    decade_counts = {}
+#     decade_sums = {}
+#     decade_counts = {}
 
-    for date_str, pop in rows:
-        year_str = date_str[:4] #Song release year
+#     for date_str, pop in rows:
+#         year_str = date_str[:4] #Song release year
 
-        if not year_str.isdigit(): 
-            continue
+#         if not year_str.isdigit(): 
+#             continue
 
-        year = int(year_str)
-        decade = (year // 10) * 10  #Convert year to decade
+#         year = int(year_str)
+#         decade = (year // 10) * 10  #Convert year to decade
 
-        if decade not in decade_sums:
-            decade_sums[decade] = 0
-            decade_counts[decade] = 0
+#         if decade not in decade_sums:
+#             decade_sums[decade] = 0
+#             decade_counts[decade] = 0
 
-        decade_sums[decade] += pop
-        decade_counts[decade] += 1
+#         decade_sums[decade] += pop
+#         decade_counts[decade] += 1
 
-    decades = sorted(decade_sums.keys())
-    avg_popularity = [
-        decade_sums[d] / decade_counts[d]
-        for d in decades
-    ]
+#     decades = sorted(decade_sums.keys())
+#     avg_popularity = [
+#         decade_sums[d] / decade_counts[d]
+#         for d in decades
+#     ]
 
-    #plot release year and average song popularity
-    colors = plt.cm.Pastel1(range(len(decades)))
-    plt.figure(figsize=(15, 6))
-    plt.bar([str(d) for d in decades], avg_popularity, color=colors)
+#     #plot release year and average song popularity
+#     colors = plt.cm.Pastel1(range(len(decades)))
+#     plt.figure(figsize=(15, 6))
+#     plt.bar([str(d) for d in decades], avg_popularity, color=colors)
 
 
-    plt.xlabel("Release Decade")
-    plt.ylabel("Average Popularity")
-    plt.title("Average Song Popularity by Release Decade")
+#     plt.xlabel("Release Decade")
+#     plt.ylabel("Average Popularity")
+#     plt.title("Average Song Popularity by Release Decade")
 
-    plt.ylim(bottom=60)
-    plt.tight_layout()
-    plt.show()
+#     plt.ylim(bottom=60)
+#     plt.tight_layout()
+#     plt.show()
 
-#Visualize movie rating vs popularity
-def visualize_movie_rating_and_popularity(conn):
-    cur = conn.cursor()
+# #Visualize movie rating vs popularity
+# def visualize_movie_rating_and_popularity(conn):
+#     cur = conn.cursor()
     
-    cur.execute('''
-        SELECT avg_rating, popularity
-        FROM Movies
-        WHERE popularity IS NOT NULL
-            AND avg_rating IS NOT NULL
-    ''')
+#     cur.execute('''
+#         SELECT avg_rating, popularity
+#         FROM Movies
+#         WHERE popularity IS NOT NULL
+#             AND avg_rating IS NOT NULL
+#     ''')
 
-    rows = cur.fetchall()
+#     rows = cur.fetchall()
 
-    avg_ratings = []
-    popularity = []
+#     avg_ratings = []
+#     popularity = []
 
-    for r, p in rows:
-        avg_ratings.append(r)
-        popularity.append(p)
+#     for r, p in rows:
+#         avg_ratings.append(r)
+#         popularity.append(p)
 
-    #Create scatterplot
-    plt.figure()
-    plt.scatter(avg_ratings, popularity, c='g')
+#     #Create scatterplot
+#     plt.figure()
+#     plt.scatter(avg_ratings, popularity, c='g')
 
-    plt.xlabel("Average Rating")
-    plt.ylabel("Popularity")
-    plt.title("Average Movie Rating VS Popularity")
+#     plt.xlabel("Average Rating")
+#     plt.ylabel("Popularity")
+#     plt.title("Average Movie Rating VS Popularity")
 
-    plt.tight_layout()
-    plt.show()
+#     plt.tight_layout()
+#     plt.show()
 
 
 
@@ -916,8 +917,8 @@ if __name__ == '__main__':
     print(find_most_popular_genres(conn))
 
     #Extra Credit: Visualizations
-    visualize_song_release_and_popularity(conn)
-    visualize_movie_rating_and_popularity(conn)
+    # visualize_song_release_and_popularity(conn)
+    # visualize_movie_rating_and_popularity(conn)
 
     conn.close()
 

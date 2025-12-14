@@ -574,7 +574,7 @@ def visualize_tmdb_genres(genre_data, top_n=10):
 
 
 
-# =============== TVMAZE / TV Shows (Willow) =====================
+# ----------TVMAZE / TV Shows (Willow)-------------
 # Fetch 25 shows from TVMAZE API
 def get_tvmaze_data(page=0):
     url = f"https://api.tvmaze.com/shows?page={page}"
@@ -600,7 +600,7 @@ def get_tvmaze_data(page=0):
 
     return shows
 
-#Repeat get_tvmaze_data function to fetch 25 shows
+#Repeat get_tvmaze_data function to fetch 25 shows to add to database
 def fetch_minimum_shows(min_total=25):
     all_shows = []
     seen_ids = set()
@@ -660,7 +660,7 @@ def visualize_show_rating_vs_weight(conn):
 
     #plot ratings vs weights
     plt.figure(figsize=(8, 6))
-    plt.scatter(weights, ratings)  
+    plt.scatter(weights, ratings,c='c')  
 
     plt.xlabel("Weight")
     plt.ylabel("Average Rating")
@@ -791,6 +791,98 @@ def find_most_popular_genres(conn):
         "shows": most_popular_show_genre(conn)
     }
 
+
+# ----------Extra Credit Visualizations (Willow)---------
+#Visualize comparison of song release date VS popularity
+def visualize_song_release_and_popularity(conn):
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT release_date, popularity
+        FROM Songs
+        WHERE release_date IS NOT NULL
+          AND popularity IS NOT NULL
+    """)
+
+    rows = cur.fetchall()
+
+    decade_sums = {}
+    decade_counts = {}
+
+    for date_str, pop in rows:
+        year_str = date_str[:4] #Song release year
+
+        if not year_str.isdigit(): 
+            continue
+
+        year = int(year_str)
+        decade = (year // 10) * 10  #Convert year to decade
+
+        if decade not in decade_sums:
+            decade_sums[decade] = 0
+            decade_counts[decade] = 0
+
+        decade_sums[decade] += pop
+        decade_counts[decade] += 1
+
+    decades = sorted(decade_sums.keys())
+    avg_popularity = [
+        decade_sums[d] / decade_counts[d]
+        for d in decades
+    ]
+
+    #plot release year and average song popularity
+    colors = plt.cm.Pastel1(range(len(decades)))
+    plt.figure(figsize=(15, 6))
+    plt.bar([str(d) for d in decades], avg_popularity, color=colors)
+
+
+    plt.xlabel("Release Decade")
+    plt.ylabel("Average Popularity")
+    plt.title("Average Song Popularity by Release Decade")
+
+    plt.ylim(bottom=60)
+    plt.tight_layout()
+    plt.show()
+
+#Visualize movie rating vs popularity
+def visualize_movie_rating_and_popularity(conn):
+    cur = conn.cursor()
+    
+    cur.execute('''
+        SELECT avg_rating, popularity
+        FROM Movies
+        WHERE popularity IS NOT NULL
+            AND avg_rating IS NOT NULL
+    ''')
+
+    rows = cur.fetchall()
+
+    avg_ratings = []
+    popularity = []
+
+    for r, p in rows:
+        avg_ratings.append(r)
+        popularity.append(p)
+
+    #Create scatterplot
+    plt.figure()
+    plt.scatter(avg_ratings, popularity, c='g')
+
+    plt.xlabel("Average Rating")
+    plt.ylabel("Popularity")
+    plt.title("Average Movie Rating VS Popularity")
+
+    plt.tight_layout()
+    plt.show()
+
+
+
+
+
+
+
+
 #--------------------Main Function (Claire Fuller, Willow Traylor, and Anna Kerhoulas)-------------------------
 if __name__ == '__main__':
     # use the DB_PATH constant from the top of the file
@@ -823,10 +915,15 @@ if __name__ == '__main__':
 
     print(find_most_popular_genres(conn))
 
+    #Extra Credit: Visualizations
+    visualize_song_release_and_popularity(conn)
+    visualize_movie_rating_and_popularity(conn)
+
     conn.close()
 
 
-#chatted main
+
+#old main
 # if __name__ == '__main__':
 #     # use the DB_PATH constant from the top of the file
 #     conn = init_database(DB_PATH)

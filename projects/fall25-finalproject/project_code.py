@@ -165,11 +165,16 @@ def init_database(db_name):
     # Create Movies table
     # DROP the old Movies table so the new schema can be created
     # cur.execute("DROP TABLE IF EXISTS sqlite_sequence")
+
+    #i added the line cur.execute("DROP TABLE IF EXISTS Movies") here and ran it and then deleted it and ran it again
+    #cur.execute("DROP TABLE IF EXISTS Movies")
+
+    #i changed this to INTEGER for the release date!!
     cur.execute("""
         CREATE TABLE IF NOT EXISTS Movies (
             id INTEGER PRIMARY KEY,
             title TEXT,
-            release_date TEXT,
+            release_year INTEGER, 
             popularity REAL,
             revenue INTEGER,
             avg_rating REAL,
@@ -442,10 +447,14 @@ def get_tmdb_data(api_key: str, page_number: int = 1):
         genre_ids = item.get("genre_ids", [])
         genre_names = get_genre_names(genre_ids)
 
+        #added this here to convert release date to year integer!!!
+        release_date = item.get("release_date")
+        release_year = int(release_date[:4]) if release_date else None
+
         movie = {
             "id": item.get("id"),
             "title": item.get("title"),
-            "release_date": item.get("release_date"),
+            "release_year": release_year,
             "popularity": item.get("popularity"),
             "revenue": 0,  # not in this endpoint, so default to 0
             "avg_rating": item.get("vote_average"),
@@ -466,13 +475,13 @@ def store_movies_in_db(movie_list, conn):
         cur.execute(
             """
             INSERT OR IGNORE INTO Movies
-            (id, title, release_date, popularity, revenue, avg_rating, genres)
+            (id, title, release_year, popularity, revenue, avg_rating, genres)
             VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 m.get("id"),
                 m.get("title"),
-                m.get("release_date"),
+                m.get("release_year"),
                 m.get("popularity"),
                 m.get("revenue"),
                 m.get("avg_rating"),

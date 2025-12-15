@@ -29,10 +29,8 @@ sp = spotipy.Spotify(
     
 #----------Getting Data----------
 def get_spotify_data(query="track:a", limit=25, offset=0):
-    print(f"call to get sptoify data: query = {query} limit = {limit} offset = {offset}")
     # Search for tracks matching query
     results = sp.search(q=query, type="track", limit=limit, offset=offset)
-    print(f"spotifyapi returned {len(results.get('tracks', {}).get('items', []))}")
     tracks = []
     for item in results.get('tracks', {}).get('items', []):
         track = {
@@ -265,7 +263,7 @@ def fetch_25_new_songs(conn, query="track:a"):
                 return enrich_tracks_with_genres(unique_new_songs)
 
         offset += limit
-
+    print(f"added {len(unique_new_songs)} songs into SpotipySongs Table")
     return enrich_tracks_with_genres(unique_new_songs)
 
 #----------Calculations----------

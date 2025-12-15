@@ -66,30 +66,6 @@ Utility function to create spotify specific db tables
 """
 def _init_spotify_tables(cur):
     # ***** SPOTIFY TABLES *****
-
-    # ***** ORIGINAL TABLES WITH DUPS *****
-    # Create Songs table
-    # cur.execute("""
-    #     CREATE TABLE IF NOT EXISTS Songs (
-    #         id TEXT PRIMARY KEY,
-    #         title TEXT,
-    #         artist TEXT,
-    #         album TEXT,
-    #         popularity INTEGER,
-    #         release_date TEXT
-    #     )
-    # """)
-
-    # #genres for songs
-    # cur.execute("""
-    #     CREATE TABLE IF NOT EXISTS Genres (
-    #         id INTEGER PRIMARY KEY AUTOINCREMENT,
-    #         song_id TEXT,
-    #         genre TEXT,
-    #         FOREIGN KEY(song_id) REFERENCES Songs(id)
-    #     );
-    # """)
-
     # ***** TABLES NO DUPS *****
 
     # Create Artists table
@@ -255,25 +231,6 @@ def insert_songs(conn, songs):
                 )
             )
         
-        # ORIGINAL SONG INSERTION
-        # cur.execute("""
-        #     INSERT OR IGNORE INTO Songs (id, title, artist, album, popularity, release_date)
-        #     VALUES (?, ?, ?, ?, ?, ?);
-        # """, (
-        #     s.get('id'),
-        #     s.get('name'),
-        #     s.get('artist'),
-        #     s.get('album'),
-        #     s.get('popularity'),
-        #     s.get('release_date')
-        # ))
-
-        # genres = s.get('genres', []) #insert genres seperately
-        # for g in genres:
-        #     cur.execute("""
-        #         INSERT OR IGNORE INTO Genres (song_id, genre)
-        #         VALUES (?, ?)
-        #     """, (s.get('id'), g))
 
     conn.commit()
 
@@ -310,45 +267,6 @@ def fetch_25_new_songs(conn, query="track:a"):
         offset += limit
 
     return enrich_tracks_with_genres(unique_new_songs)
-
-#----------Spotipy Fetching Helpers----------
-# def fetch_and_store_spotify_tracks(conn):
-#     cur = conn.cursor()
-
-#     cur.execute("SELECT COUNT(*) FROM Songs")
-#     current = cur.fetchone()[0]
-
-#     if current >= 100:
-#         print("Reached 100 songs. Stopping.")
-#         return
-
-#     offset = current
-#     print("Fetching offset =", offset)
-
-#     # Use a stable huge-query search
-#     tracks = get_spotify_data(query='e', limit=25, offset=offset)
-
-#     if len(tracks) == 0:
-#         print("NO TRACKS RETURNED — Query too restrictive.")
-#         return
-
-#     tracks = enrich_tracks_with_genres(tracks)
-#     insert_songs(conn, tracks)
-
-def my_spotipy_query(): # for debug
-    tracks = []
-    for index in range(4):
-        local_tracks = get_spotify_data(query="year:2023", limit=25, offset=(index * 25))
-        tracks.extend(local_tracks)
-    print(len(tracks))
-    #print(tracks)
-        
-    for index in range(4):
-        local_tracks = get_spotify_data(query="year:2024", limit=25, offset=(index * 25))
-        tracks.extend(local_tracks)
-    print(len(tracks))
-
-    conn.commit()
 
 #----------Calculations----------
 def calculate_spotify_genre_popularity(conn, output_file="spotify_genre_popularity.txt"):
@@ -953,31 +871,3 @@ if __name__ == '__main__':
 
     conn.close()
 
-
-
-#old main
-# if __name__ == '__main__':
-#     # use the DB_PATH constant from the top of the file
-#     conn = init_database(DB_PATH)
-
-#     #----------Spotify (Claire Fuller)----------
-#     fetch_and_store_spotify_tracks(conn)
-#     spotify_genre_data = calculate_spotify_genre_popularity(conn)
-#     visualize_genre_popularity(spotify_genre_data)
-
-#     #----------TMDB (Anna Kerhoulas)----------
-#     # Each call adds up to 25 NEW movies
-#     fetch_and_store_tmdb_movies(conn, api_key=TMDB_API_KEY, batch_size=25)
-
-#     genre_data = calculate_tmdb_genre_counts(conn)
-#     visualize_tmdb_genres(genre_data, top_n=10)
-
-#     # ----- TVMaze -----
-#     min_shows = fetch_minimum_shows()
-#     insert_shows(conn, min_shows)
-#     print(f"Inserted {len(min_shows)} TV shows into the Shows table.")
-#     visualize_show_rating_vs_weight(conn)
-
-#     print(find_most_popular_genres(conn))
-
-#     conn.close()

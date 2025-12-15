@@ -601,9 +601,15 @@ def get_tvmaze_data(page=0):
     return shows
 
 #Repeat get_tvmaze_data function to fetch 25 shows to add to database
-def fetch_minimum_shows(min_total=25):
+def fetch_minimum_shows(conn, min_total=25):
+    cur = conn.cursor()
+    cur.execute('''
+        SELECT id FROM Shows
+        WHERE id IS NOT NULL
+    ''')
+
+    ids_in_db = {row[0] for row in cur.fetchall()}
     all_shows = []
-    seen_ids = set()
     page = 0
 
     while len(all_shows) < min_total:
@@ -613,9 +619,10 @@ def fetch_minimum_shows(min_total=25):
 
         #filter out duplicates
         for show in batch:
-            if show["id"] not in seen_ids:
-                seen_ids.add(show["id"])
+            show_id = show["id"]
+            if show_id not in ids_in_db:
                 all_shows.append(show)
+                ids_in_db.add(show_id)
 
         page += 1  #move to next page
 
@@ -784,98 +791,113 @@ def most_popular_show_genre(conn):
 
     return best_genre, best_avg
 
-#Compare popular genres for media types
-def find_most_popular_genres(conn):
-    return {
-        "songs": most_popular_song_genre(conn),
-        "movies": most_popular_movie_genre(conn),
-        "shows": most_popular_show_genre(conn)
-    }
+#Compare popular genres for media types and write them to a txt file
+def find_most_popular_genres(conn, output_file="most_popular_genres.csv"):
+    popular_song_genre = most_popular_song_genre(conn)
+    popular_movie_genre = most_popular_movie_genre(conn)
+    popular_show_genre = most_popular_show_genre(conn)
 
+    rows = [{"media_type":"Song", "genre":popular_song_genre[0],"avg_popularity":popular_song_genre[1]},
+            {"media_type":"Movie","genre":popular_movie_genre[0],"avg_popularity":popular_movie_genre[1]},
+            {"media_type":"Show","genre":popular_show_genre[0],"avg_popularity":popular_show_genre[1]}
+        ]
+
+    fieldnames = ["media_type", "genre", "avg_popularity"]
+    
+    try: 
+        with open(output_file, "w", newline='') as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(rows)
+        print(f"Wrote most popular genres to {output_file}")
+    except:
+        print("Error writing most popular genres to csv file")
+
+    return rows
 
 # ----------Extra Credit Visualizations (Willow)---------
-# #Visualize comparison of song release date VS popularity
-# def visualize_song_release_and_popularity(conn):
-#     cur = conn.cursor()
+#Visualize comparison of song release date VS popularity
+def visualize_song_release_and_popularity(conn):
+    cur = conn.cursor()
 
-#     cur.execute("""
-#         SELECT release_date, popularity
-#         FROM Songs
-#         WHERE release_date IS NOT NULL
-#           AND popularity IS NOT NULL
-#     """)
+    cur.execute("""
+        SELECT release_date, popularity
+        FROM SpotifySongs
+        WHERE release_date IS NOT NULL
+          AND popularity IS NOT NULL
+    """)
 
-#     rows = cur.fetchall()
+    rows = cur.fetchall()
 
-#     decade_sums = {}
-#     decade_counts = {}
+    decade_sums = {}
+    decade_counts = {}
 
-#     for date_str, pop in rows:
-#         year_str = date_str[:4] #Song release year
+    for date_str, pop in rows:
+        year_str = date_str[:4] #Song release year
 
-#         if not year_str.isdigit(): 
-#             continue
+        if not year_str.isdigit(): 
+            continue
 
-#         year = int(year_str)
-#         decade = (year // 10) * 10  #Convert year to decade
+        year = int(year_str)
+        decade = (year // 10) * 10  #Convert year to decade
 
-#         if decade not in decade_sums:
-#             decade_sums[decade] = 0
-#             decade_counts[decade] = 0
+        if decade not in decade_sums:
+            decade_sums[decade] = 0
+            decade_counts[decade] = 0
 
-#         decade_sums[decade] += pop
-#         decade_counts[decade] += 1
+        decade_sums[decade] += pop
+        decade_counts[decade] += 1
 
-#     decades = sorted(decade_sums.keys())
-#     avg_popularity = [
-#         decade_sums[d] / decade_counts[d]
-#         for d in decades
-#     ]
+    decades = sorted(decade_sums.keys())
+    avg_popularity = [
+        decade_sums[d] / decade_counts[d]
+        for d in decades
+    ]
 
-#     #plot release year and average song popularity
-#     colors = plt.cm.Pastel1(range(len(decades)))
-#     plt.figure(figsize=(15, 6))
-#     plt.bar([str(d) for d in decades], avg_popularity, color=colors)
+    #plot release year and average song popularity
+    colors = plt.cm.Pastel1(range(len(decades)))
+    plt.figure(figsize=(12, 6))
+    plt.bar([str(d) for d in decades], avg_popularity, color=colors)
 
 
-#     plt.xlabel("Release Decade")
-#     plt.ylabel("Average Popularity")
-#     plt.title("Average Song Popularity by Release Decade")
+    plt.xlabel("Release Decade")
+    plt.ylabel("Average Popularity")
+    plt.title("Average Song Popularity by Release Decade")
 
-#     plt.ylim(bottom=60)
-#     plt.tight_layout()
-#     plt.show()
+    plt.ylim(bottom=60)
+    plt.tight_layout()
+    plt.show()
 
-# #Visualize movie rating vs popularity
-# def visualize_movie_rating_and_popularity(conn):
-#     cur = conn.cursor()
+#Visualize movie rating vs popularity
+def visualize_movie_rating_and_popularity(conn):
+    cur = conn.cursor()
     
-#     cur.execute('''
-#         SELECT avg_rating, popularity
-#         FROM Movies
-#         WHERE popularity IS NOT NULL
-#             AND avg_rating IS NOT NULL
-#     ''')
+    cur.execute('''
+        SELECT avg_rating, popularity
+        FROM Movies
+        WHERE popularity IS NOT NULL
+            AND avg_rating IS NOT NULL
+    ''')
 
-#     rows = cur.fetchall()
+    rows = cur.fetchall()
 
-#     avg_ratings = []
-#     popularity = []
+    avg_ratings = []
+    popularity = []
 
-#     for r, p in rows:
-#         avg_ratings.append(r)
-#         popularity.append(p)
+    for r, p in rows:
+        avg_ratings.append(r)
+        popularity.append(p)
 
-#     #Create scatterplot
-#     plt.figure()
-#     plt.scatter(avg_ratings, popularity, c='g')
+    #Create scatterplot
+    plt.figure()
+    plt.scatter(avg_ratings, popularity, c='g')
 
-#     plt.xlabel("Average Rating")
-#     plt.ylabel("Popularity")
-#     plt.title("Average Movie Rating VS Popularity")
+    plt.xlabel("Average Rating")
+    plt.ylabel("Popularity")
+    plt.title("Average Movie Rating VS Popularity")
 
-#     plt.tight_layout()
-#     plt.show()
+    plt.tight_layout()
+    plt.show()
 
 
 
@@ -909,16 +931,16 @@ if __name__ == '__main__':
     visualize_tmdb_genres(genre_data, top_n=10)
 
         # ----- TVMaze -----
-    min_shows = fetch_minimum_shows()
+    min_shows = fetch_minimum_shows(conn)
     insert_shows(conn, min_shows)
     print(f"Inserted {len(min_shows)} TV shows into the Shows table.")
     visualize_show_rating_vs_weight(conn)
 
-    print(find_most_popular_genres(conn))
+    find_most_popular_genres(conn, output_file="most_popular_genres.csv")
 
     #Extra Credit: Visualizations
-    # visualize_song_release_and_popularity(conn)
-    # visualize_movie_rating_and_popularity(conn)
+    visualize_song_release_and_popularity(conn)
+    visualize_movie_rating_and_popularity(conn)
 
     conn.close()
 
